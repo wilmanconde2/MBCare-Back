@@ -5,6 +5,7 @@ import connectDB from "./config/db.js";
 import patientRoutes from "./routes/patientRoutes.js";
 import organizationRoutes from "./routes/organizationRoutes.js"; 
 import appointmentRoutes from "./routes/appointmentRoutes.js";
+import noteRoutes from "./routes/noteRoutes.js";
 
 // Rutas
 import authRoutes from "./routes/authRoutes.js";
@@ -26,6 +27,8 @@ app.use("/api/usuarios", userRoutes);
 app.use("/api/pacientes", patientRoutes);
 app.use("/api/organizacion", organizationRoutes);
 app.use("/api/citas", appointmentRoutes);
+app.use("/api/notas", noteRoutes);
+
 
 // 🟢 Puerto
 const PORT = process.env.PORT || 5000;

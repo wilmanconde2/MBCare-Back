@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const noteSchema = new mongoose.Schema(
+const attachmentSchema = new mongoose.Schema(
     {
         paciente: {
             type: mongoose.Schema.Types.ObjectId,
@@ -17,28 +17,27 @@ const noteSchema = new mongoose.Schema(
             ref: "Organization",
             required: true,
         },
-        titulo: {
-            type: String,
-            trim: true,
-        },
-        contenido: {
+        url: {
             type: String,
             required: true,
         },
-        tipoNota: {
+        public_id: {
+            type: String, // ID de Cloudinary para poder eliminarlo luego
+            required: true,
+        },
+        descripcion: {
             type: String,
             trim: true,
         },
-        adjuntos: [
-            {
-                type: String, // URL (opcional, se enlaza desde el módulo de Adjuntos más adelante)
-            },
-        ],
+        tipo: {
+            type: String, // image / pdf / audio / etc
+            required: true,
+        },
     },
     {
         timestamps: true,
     }
 );
 
-const Note = mongoose.model("Note", noteSchema);
-export default Note;
+const Attachment = mongoose.model("Attachment", attachmentSchema);
+export default Attachment;

@@ -1,11 +1,8 @@
-// ✅ controllers/appointmentController.js
-
 import Appointment from "../models/Appointment.js";
 import mongoose from "mongoose";
 
 /**
  * 🟢 Crear una cita
- * Profesionales y Fundadores pueden crear
  */
 export const crearCita = async (req, res) => {
     try {
@@ -42,8 +39,7 @@ export const crearCita = async (req, res) => {
 };
 
 /**
- * 🔍 Obtener todas las citas de la organización del usuario logueado
- * Soporta filtro por paciente, fecha y estado
+ * 🔍 Obtener todas las citas de la organización con filtros
  */
 export const obtenerCitasOrganizacion = async (req, res) => {
     try {
@@ -161,6 +157,9 @@ export const cancelarCita = async (req, res) => {
     }
 };
 
+/**
+ * 📤 Exportar resumen de citas
+ */
 export const exportarCitas = async (req, res) => {
     try {
         const { desde, hasta, estado } = req.query;
@@ -184,7 +183,6 @@ export const exportarCitas = async (req, res) => {
             .populate("profesional", "nombre")
             .sort({ fecha: 1 });
 
-        // Mapear para solo incluir lo necesario
         const resumen = citas.map((cita) => ({
             paciente: cita.paciente?.nombreCompleto,
             documento: cita.paciente?.numeroDocumento,
