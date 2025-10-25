@@ -6,7 +6,6 @@ import patientRoutes from "./routes/patientRoutes.js";
 import organizationRoutes from "./routes/organizationRoutes.js"; 
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import noteRoutes from "./routes/noteRoutes.js";
-import attachmentRoutes from "./routes/attachmentRoutes.js";
 
 // Rutas
 import authRoutes from "./routes/authRoutes.js";
@@ -29,7 +28,6 @@ app.use("/api/pacientes", patientRoutes);
 app.use("/api/organizacion", organizationRoutes);
 app.use("/api/citas", appointmentRoutes);
 app.use("/api/notas", noteRoutes);
-app.use("/api/adjuntos", attachmentRoutes);
 
 // 🟢 Puerto
 const PORT = process.env.PORT || 5000;
