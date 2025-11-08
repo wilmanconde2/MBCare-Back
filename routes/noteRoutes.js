@@ -1,5 +1,5 @@
 import express from "express";
-import { crearNota, obtenerNotasPorPaciente, obtenerNotaPorId, editarNota, eliminarNota } from "../controllers/noteController.js";
+import { crearNota, obtenerNotaPorId, editarNota, eliminarNota, obtenerNotasPorDocumento } from "../controllers/noteController.js";
 import { protect } from "../middlewares/authMiddleware.js";
 import { hasAccess } from "../middlewares/hasAccess.js";
 
@@ -12,14 +12,14 @@ const router = express.Router();
 router.post("/", protect, hasAccess(["Fundador", "Profesional"]), crearNota);
 
 /**
- * 📋 Listar todas las notas de un paciente
+ * 📋 Listar todas las notas de un paciente por CC
  * Fundador y Profesional
  */
 router.get(
-    "/paciente/:pacienteId",
+    "/documento/:numeroDocumento",
     protect,
     hasAccess(["Fundador", "Profesional"]),
-    obtenerNotasPorPaciente
+    obtenerNotasPorDocumento
 );
 
 /**

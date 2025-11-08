@@ -2,12 +2,19 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import connectDB from "./config/db.js";
+
 import patientRoutes from "./routes/patientRoutes.js";
-import organizationRoutes from "./routes/organizationRoutes.js"; 
+import organizationRoutes from "./routes/organizationRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import noteRoutes from "./routes/noteRoutes.js";
+import attachmentRoutes from "./routes/attachmentRoutes.js";
+import configuracionRoutes from "./routes/configuracionRoutes.js";
+import cajaRoutes from "./routes/cajaRoutes.js";
+import cashflowRoutes from "./routes/cashflowRoutes.js";
+import reportesRoutes from "./routes/reportesRoutes.js";
 
-// Rutas
+
+// Rutas de auth y usuarios
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 
@@ -28,6 +35,12 @@ app.use("/api/pacientes", patientRoutes);
 app.use("/api/organizacion", organizationRoutes);
 app.use("/api/citas", appointmentRoutes);
 app.use("/api/notas", noteRoutes);
+app.use("/api/adjuntos", attachmentRoutes);
+app.use("/api/configuracion", configuracionRoutes);
+app.use("/api/caja", cajaRoutes);
+app.use("/api/caja", cashflowRoutes);
+app.use("/api/reportes", reportesRoutes);
+
 
 // 🟢 Puerto
 const PORT = process.env.PORT || 5000;

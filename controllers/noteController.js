@@ -1,7 +1,6 @@
-// ✅ controllers/noteController.js
-
 import Note from "../models/Note.js";
 import mongoose from "mongoose";
+import Patient from "../models/Patient.js";
 
 /**
  * 📝 Crear una nueva nota clínica
@@ -41,7 +40,7 @@ export const crearNota = async (req, res) => {
 };
 
 /**
- * 📋 Listar todas las notas clínicas de un paciente
+ * 📋 Listar todas las notas clínicas de un paciente (por ObjectId)
  */
 export const obtenerNotasPorPaciente = async (req, res) => {
     try {
@@ -61,6 +60,41 @@ export const obtenerNotasPorPaciente = async (req, res) => {
         res.status(200).json({ notas });
     } catch (error) {
         console.error("Error al obtener notas:", error);
+        res.status(500).json({ message: "Error al obtener notas clínicas.", error: error.message });
+    }
+};
+
+/**
+ * 📋 Obtener notas por número de documento (validando organización)
+ */
+export const obtenerNotasPorDocumento = async (req, res) => {
+    try {
+        const { numeroDocumento } = req.params;
+
+        if (!numeroDocumento) {
+            return res.status(400).json({ message: "El número de documento es obligatorio." });
+        }
+
+        // Buscar paciente dentro de la organización actual
+        const paciente = await Patient.findOne({
+            numeroDocumento,
+            organizacion: req.user.organizacion,
+        });
+
+        if (!paciente) {
+            return res.status(404).json({ message: "Paciente no encontrado en esta organización." });
+        }
+
+        const notas = await Note.find({
+            paciente: paciente._id,
+            organizacion: req.user.organizacion,
+        })
+            .populate("profesional", "nombre email")
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({ notas });
+    } catch (error) {
+        console.error("Error al obtener notas por documento:", error);
         res.status(500).json({ message: "Error al obtener notas clínicas.", error: error.message });
     }
 };

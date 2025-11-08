@@ -15,8 +15,8 @@ const patientSchema = new mongoose.Schema(
         },
         numeroDocumento: {
             type: String,
-            unique: true,
-            sparse: true, // permite valores nulos sin romper el índice único
+            required: [true, "El número de documento es obligatorio. Sin puntos ni comas."],
+            trim: true,
         },
         fechaNacimiento: {
             type: Date,
