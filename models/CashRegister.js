@@ -1,5 +1,3 @@
-// ✅ models/CashRegister.js
-
 import mongoose from "mongoose";
 
 const cashRegisterSchema = new mongoose.Schema(

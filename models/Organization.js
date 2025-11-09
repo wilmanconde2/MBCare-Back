@@ -8,28 +8,23 @@ const organizationSchema = new mongoose.Schema({
   industria: {
     type: String,
     enum: ["Psicología", "CAF/E", "Odontología"],
-    required: true
+    required: true,
   },
   logo: {
     type: String,
-    default: ""
-  },
-  idioma: {
-    type: String,
-    enum: ["es", "en"],
-    default: "es"
+    default: "",
   },
   tema: {
     type: String,
     enum: ["claro", "oscuro"],
-    default: "claro"
+    default: "claro",
   },
   creadaPor: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User"
-  }
+    ref: "User",
+  },
 }, {
-  timestamps: true
+  timestamps: true,
 });
 
 export default mongoose.model("Organization", organizationSchema);

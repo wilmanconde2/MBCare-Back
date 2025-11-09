@@ -1,5 +1,3 @@
-// ✅ controllers/configuracionController.js
-
 import Organization from "../models/Organization.js";
 import { subirArchivoFilebase } from "../services/filebaseService.js";
 
@@ -19,7 +17,7 @@ export const obtenerConfiguracion = async (req, res) => {
             nombre: organizacion.nombre,
             industria: organizacion.industria,
             logo: organizacion.logo || null,
-            idioma: organizacion.idioma || "es",
+            tema: organizacion.tema || "claro",
         });
     } catch (error) {
         console.error("Error al obtener configuración:", error);
@@ -33,7 +31,7 @@ export const obtenerConfiguracion = async (req, res) => {
  */
 export const actualizarConfiguracion = async (req, res) => {
     try {
-        const { nombre, industria, idioma } = req.body;
+        const { nombre, industria, tema } = req.body;
         const organizacion = await Organization.findById(req.user.organizacion);
 
         if (!organizacion) {
@@ -52,7 +50,7 @@ export const actualizarConfiguracion = async (req, res) => {
 
         if (nombre) organizacion.nombre = nombre;
         if (industria) organizacion.industria = industria;
-        if (idioma) organizacion.idioma = idioma;
+        if (tema) organizacion.tema = tema;
 
         await organizacion.save();
 
@@ -61,7 +59,7 @@ export const actualizarConfiguracion = async (req, res) => {
             organizacion: {
                 nombre: organizacion.nombre,
                 industria: organizacion.industria,
-                idioma: organizacion.idioma,
+                tema: organizacion.tema,
                 logo: organizacion.logo || null,
             },
         });
