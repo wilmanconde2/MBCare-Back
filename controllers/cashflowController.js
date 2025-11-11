@@ -1,5 +1,6 @@
 import Transaction from "../models/Transaction.js";
 import CashRegister from "../models/CashRegister.js";
+import { inicioDelDia, finDelDia } from "../config/timezone.js";
 
 // ➕ Crear ingreso o egreso
 export const crearTransaccion = async (req, res) => {
@@ -14,14 +15,11 @@ export const crearTransaccion = async (req, res) => {
             return res.status(400).json({ message: "Tipo inválido." });
         }
 
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-
-        const mañana = new Date(hoy);
-        mañana.setDate(mañana.getDate() + 1);
+        const hoyInicio = inicioDelDia();
+        const hoyFin = finDelDia();
 
         const caja = await CashRegister.findOne({
-            fecha: { $gte: hoy, $lt: mañana },
+            fecha: { $gte: hoyInicio, $lte: hoyFin },
             organizacion: req.user.organizacion,
             abierta: true,
         });
@@ -73,13 +71,11 @@ export const listarPorFecha = async (req, res) => {
             return res.status(400).json({ message: "La fecha es obligatoria." });
         }
 
-        const inicioDia = new Date(fecha);
-        inicioDia.setHours(0, 0, 0, 0);
-        const finDia = new Date(inicioDia);
-        finDia.setDate(finDia.getDate() + 1);
+        const inicio = inicioDelDia(fecha);
+        const fin = finDelDia(fecha);
 
         const transacciones = await Transaction.find({
-            createdAt: { $gte: inicioDia, $lt: finDia },
+            createdAt: { $gte: inicio, $lte: fin },
             organizacion: req.user.organizacion,
         }).sort({ createdAt: -1 });
 

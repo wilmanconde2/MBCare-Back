@@ -1,5 +1,8 @@
+// ✅ controllers/cajaController.js
+
 import CashRegister from "../models/CashRegister.js";
 import Transaction from "../models/Transaction.js";
+import { inicioDelDia, finDelDia, fechaActual } from "../config/timezone.js";
 
 // 🟦 Abrir Caja del Día
 export const abrirCaja = async (req, res) => {
@@ -10,13 +13,11 @@ export const abrirCaja = async (req, res) => {
             return res.status(400).json({ message: "El valor de apertura es requerido y debe ser válido." });
         }
 
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        const mañana = new Date(hoy);
-        mañana.setDate(mañana.getDate() + 1);
+        const hoyInicio = inicioDelDia();
+        const hoyFin = finDelDia();
 
         const existeCajaHoy = await CashRegister.findOne({
-            fecha: { $gte: hoy, $lt: mañana },
+            fecha: { $gte: hoyInicio, $lte: hoyFin },
             profesional: req.user._id,
             organizacion: req.user.organizacion,
             abierta: true,
@@ -31,7 +32,7 @@ export const abrirCaja = async (req, res) => {
             profesional: req.user._id,
             organizacion: req.user.organizacion,
             abierta: true,
-            fecha: hoy,
+            fecha: hoyInicio,
         });
 
         res.status(201).json({
@@ -47,13 +48,11 @@ export const abrirCaja = async (req, res) => {
 // 🔒 Cerrar Caja del Día
 export const cerrarCaja = async (req, res) => {
     try {
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        const mañana = new Date(hoy);
-        mañana.setDate(mañana.getDate() + 1);
+        const hoyInicio = inicioDelDia();
+        const hoyFin = finDelDia();
 
         const caja = await CashRegister.findOne({
-            fecha: { $gte: hoy, $lt: mañana },
+            fecha: { $gte: hoyInicio, $lte: hoyFin },
             profesional: req.user._id,
             organizacion: req.user.organizacion,
             abierta: true,
@@ -63,14 +62,18 @@ export const cerrarCaja = async (req, res) => {
             return res.status(404).json({ message: "No hay una caja abierta para hoy." });
         }
 
-        // Obtener transacciones del día
         const transacciones = await Transaction.find({
             caja: caja._id,
             organizacion: req.user.organizacion,
         });
 
-        const totalIngresos = transacciones.filter(t => t.tipo === "Ingreso").reduce((acc, t) => acc + t.monto, 0);
-        const totalEgresos = transacciones.filter(t => t.tipo === "Egreso").reduce((acc, t) => acc + t.monto, 0);
+        const totalIngresos = transacciones
+            .filter(t => t.tipo === "Ingreso")
+            .reduce((acc, t) => acc + t.monto, 0);
+
+        const totalEgresos = transacciones
+            .filter(t => t.tipo === "Egreso")
+            .reduce((acc, t) => acc + t.monto, 0);
 
         const saldoFinal = caja.saldoInicial + totalIngresos - totalEgresos;
 
