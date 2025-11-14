@@ -13,6 +13,7 @@ import cajaRoutes from "./routes/cajaRoutes.js";
 import cashflowRoutes from "./routes/cashflowRoutes.js";
 import reportesRoutes from "./routes/reportesRoutes.js";
 import resumenCajaRoutes from "./routes/resumenCajaRoutes.js";
+import consolidadoMensualRoutes from "./routes/consolidadoMensualRoutes.js";
 
 // Rutas de auth y usuarios
 import authRoutes from "./routes/authRoutes.js";
@@ -41,6 +42,7 @@ app.use("/api/caja", cajaRoutes);
 app.use("/api/caja", cashflowRoutes);
 app.use("/api/reportes", reportesRoutes);
 app.use("/api/caja/resumen", resumenCajaRoutes);
+app.use("/api/consolidado", consolidadoMensualRoutes);
 
 // 🟢 Puerto
 const PORT = process.env.PORT || 5000;

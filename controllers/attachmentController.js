@@ -1,5 +1,3 @@
-// ✅ controllers/attachmentController.js
-
 import Attachment from "../models/Attachment.js";
 import { subirArchivoFilebase, eliminarArchivoFilebase } from "../services/filebaseService.js";
 

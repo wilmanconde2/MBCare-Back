@@ -1,0 +1,125 @@
+import ConsolidadoMensual from "../models/ConsolidadoMensual.js";
+import ResumenCaja from "../models/ResumenCaja.js";
+import moment from "moment-timezone";
+import PDFDocument from "pdfkit";
+
+export const generarResumenMensual = async (req, res) => {
+    try {
+        const { mes } = req.query;
+        if (!mes || !/^\d{4}-\d{2}$/.test(mes)) {
+            return res.status(400).json({ message: "El parámetro mes debe tener el formato YYYY-MM." });
+        }
+
+
+        const [anio, mesStr] = mes.split("-");
+        const numeroMes = parseInt(mesStr);
+        const numeroAnio = parseInt(anio);
+
+
+        const yaExiste = await ConsolidadoMensual.findOne({
+            mes: numeroMes,
+            anio: numeroAnio,
+            organizacion: req.user.organizacion,
+        });
+
+
+        if (yaExiste) {
+            return res.status(200).json({ message: "Consolidado ya existente.", consolidado: yaExiste });
+        }
+
+
+        const fechaInicioMes = moment.tz(`${anio}-${mesStr}-01`, "America/Bogota").startOf("month").toDate();
+        const fechaFinMes = moment.tz(fechaInicioMes, "America/Bogota").endOf("month").toDate();
+
+
+        const resumenes = await ResumenCaja.find({
+            fecha: { $gte: fechaInicioMes, $lte: fechaFinMes },
+            organizacion: req.user.organizacion,
+        });
+
+
+        const ingresosTotales = resumenes.reduce((acc, r) => acc + r.ingresosTotales, 0);
+        const egresosTotales = resumenes.reduce((acc, r) => acc + r.egresosTotales, 0);
+        const saldoInicial = resumenes.length > 0 ? resumenes[0].saldoInicial : 0;
+        const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
+
+
+        const consolidado = await ConsolidadoMensual.create({
+            mes: numeroMes,
+            anio: numeroAnio,
+            organizacion: req.user.organizacion,
+            ingresosTotales,
+            egresosTotales,
+            saldoInicial,
+            saldoFinal,
+            creadoPor: req.user._id,
+        });
+
+
+        res.status(201).json({ message: "Consolidado generado exitosamente.", consolidado });
+    } catch (error) {
+        console.error("Error al generar consolidado mensual:", error);
+        res.status(500).json({ message: "Error al generar consolidado mensual." });
+    }
+};
+
+// 🧾 Exportar consolidado mensual en PDF
+export const exportarResumenMensualPDF = async (req, res) => {
+    try {
+        const { mes } = req.query;
+
+        if (!mes || !/^\d{4}-\d{2}$/.test(mes)) {
+            return res.status(400).json({ message: "El parámetro 'mes' debe tener el formato YYYY-MM." });
+        }
+
+        const [anio, mesStr] = mes.split("-");
+        const numeroMes = parseInt(mesStr);
+        const numeroAnio = parseInt(anio);
+
+        const consolidado = await ConsolidadoMensual.findOne({
+            mes: numeroMes,
+            anio: numeroAnio,
+            organizacion: req.user.organizacion,
+        }).populate("creadoPor", "nombre email");
+
+        if (!consolidado) {
+            return res.status(404).json({ message: "No hay consolidado para ese mes." });
+        }
+
+        // 📝 Preparar PDF
+        const doc = new PDFDocument({ margin: 50 });
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename=consolidado_${mes}.pdf`);
+        doc.pipe(res);
+
+        // 🧾 Encabezado
+        doc.fontSize(20).text("Consolidado Mensual de Caja - MBCare", { align: "center" });
+        doc.moveDown();
+        doc.fontSize(14).text(`Mes: ${moment(`${mes}-01`).format("MMMM [de] YYYY")}`, { align: "left" });
+        doc.fontSize(10).text(`Generado por: ${consolidado.creadoPor?.nombre || "Usuario"}`, { align: "left" });
+        doc.text(`Fecha de generación: ${moment().tz("America/Bogota").format("DD/MM/YYYY HH:mm")}`);
+        doc.moveDown(1.5);
+
+        // 💰 Datos financieros
+        doc.fontSize(12).text(`Saldo inicial del mes: $${consolidado.saldoInicial.toLocaleString()}`);
+        doc.text(`Ingresos del mes:      $${consolidado.ingresosTotales.toLocaleString()}`);
+        doc.text(`Egresos del mes:       $${consolidado.egresosTotales.toLocaleString()}`);
+        doc.text(`Saldo final:           $${consolidado.saldoFinal.toLocaleString()}`);
+        doc.moveDown(1.5);
+
+        // 📌 Observaciones
+        doc.fontSize(11).fillColor("gray").text("Este consolidado incluye el total de ingresos y egresos diarios registrados a través del módulo de Caja.", {
+            align: "justify",
+        });
+
+        doc.moveDown();
+        doc.fillColor("gray").text("Se recomienda guardar este archivo como respaldo contable mensual.", {
+            align: "justify",
+        });
+
+        doc.end();
+    } catch (error) {
+        console.error("Error al exportar consolidado mensual en PDF:", error);
+        res.status(500).json({ message: "Error al generar PDF del consolidado mensual." });
+    }
+};
