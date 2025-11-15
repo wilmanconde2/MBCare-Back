@@ -1,6 +1,10 @@
 import ConsolidadoMensual from "../models/ConsolidadoMensual.js";
 import ResumenCaja from "../models/ResumenCaja.js";
 import moment from "moment-timezone";
+import "moment/locale/es.js";
+
+moment.locale("es");
+
 import PDFDocument from "pdfkit";
 
 export const generarResumenMensual = async (req, res) => {
@@ -10,10 +14,9 @@ export const generarResumenMensual = async (req, res) => {
             return res.status(400).json({ message: "El parámetro mes debe tener el formato YYYY-MM." });
         }
 
-
-        const [anio, mesStr] = mes.split("-");
-        const numeroMes = parseInt(mesStr);
-        const numeroAnio = parseInt(anio);
+        const [anio, mesStr] = mes.split("-");   
+        const numeroMes = Number(mesStr);       
+        const numeroAnio = Number(anio);
 
 
         const yaExiste = await ConsolidadoMensual.findOne({
@@ -22,27 +25,22 @@ export const generarResumenMensual = async (req, res) => {
             organizacion: req.user.organizacion,
         });
 
-
         if (yaExiste) {
             return res.status(200).json({ message: "Consolidado ya existente.", consolidado: yaExiste });
         }
 
-
         const fechaInicioMes = moment.tz(`${anio}-${mesStr}-01`, "America/Bogota").startOf("month").toDate();
         const fechaFinMes = moment.tz(fechaInicioMes, "America/Bogota").endOf("month").toDate();
-
 
         const resumenes = await ResumenCaja.find({
             fecha: { $gte: fechaInicioMes, $lte: fechaFinMes },
             organizacion: req.user.organizacion,
         });
 
-
         const ingresosTotales = resumenes.reduce((acc, r) => acc + r.ingresosTotales, 0);
         const egresosTotales = resumenes.reduce((acc, r) => acc + r.egresosTotales, 0);
         const saldoInicial = resumenes.length > 0 ? resumenes[0].saldoInicial : 0;
         const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
-
 
         const consolidado = await ConsolidadoMensual.create({
             mes: numeroMes,
@@ -54,7 +52,6 @@ export const generarResumenMensual = async (req, res) => {
             saldoFinal,
             creadoPor: req.user._id,
         });
-
 
         res.status(201).json({ message: "Consolidado generado exitosamente.", consolidado });
     } catch (error) {
@@ -92,10 +89,14 @@ export const exportarResumenMensualPDF = async (req, res) => {
         res.setHeader("Content-Disposition", `attachment; filename=consolidado_${mes}.pdf`);
         doc.pipe(res);
 
+        // Capitalizar mes
+        const mesFormateado = moment(`${mes}-01`).format("MMMM [de] YYYY");
+        const mesCapitalizado = mesFormateado.charAt(0).toUpperCase() + mesFormateado.slice(1);
+
         // 🧾 Encabezado
         doc.fontSize(20).text("Consolidado Mensual de Caja - MBCare", { align: "center" });
         doc.moveDown();
-        doc.fontSize(14).text(`Mes: ${moment(`${mes}-01`).format("MMMM [de] YYYY")}`, { align: "left" });
+        doc.fontSize(14).text(`Mes: ${mesCapitalizado}`, { align: "left" });
         doc.fontSize(10).text(`Generado por: ${consolidado.creadoPor?.nombre || "Usuario"}`, { align: "left" });
         doc.text(`Fecha de generación: ${moment().tz("America/Bogota").format("DD/MM/YYYY HH:mm")}`);
         doc.moveDown(1.5);
@@ -108,14 +109,16 @@ export const exportarResumenMensualPDF = async (req, res) => {
         doc.moveDown(1.5);
 
         // 📌 Observaciones
-        doc.fontSize(11).fillColor("gray").text("Este consolidado incluye el total de ingresos y egresos diarios registrados a través del módulo de Caja.", {
-            align: "justify",
-        });
+        doc.fontSize(11).fillColor("gray").text(
+            "Este consolidado incluye el total de ingresos y egresos diarios registrados a través del módulo de Caja.",
+            { align: "justify" }
+        );
 
         doc.moveDown();
-        doc.fillColor("gray").text("Se recomienda guardar este archivo como respaldo contable mensual.", {
-            align: "justify",
-        });
+        doc.fillColor("gray").text(
+            "Se recomienda guardar este archivo como respaldo contable mensual.",
+            { align: "justify" }
+        );
 
         doc.end();
     } catch (error) {
