@@ -1,7 +1,9 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import connectDB from "./config/db.js";
+
 import patientRoutes from "./routes/patientRoutes.js";
 import organizationRoutes from "./routes/organizationRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
@@ -15,24 +17,31 @@ import resumenCajaRoutes from "./routes/resumenCajaRoutes.js";
 import consolidadoMensualRoutes from "./routes/consolidadoMensualRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import auditoriaRoutes from "./routes/auditoriaRoutes.js";
-import { errorHandler } from "./middlewares/errorHandler.js";
 
-
-// Rutas de auth y usuarios
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+
+import { errorHandler } from "./middlewares/errorHandler.js";
 
 dotenv.config();
 const app = express();
 
-// 🔗 Conectar a la base de datos
+// Conectar a la base de datos
 connectDB();
 
-// 🧱 Middlewares
-app.use(cors());
-app.use(express.json()); // Para leer body en formato JSON
+// Middlewares globales
+app.use(express.json());
+app.use(cookieParser());
 
-// 📦 Rutas API
+// CORS CONFIGURADO CORRECTAMENTE PARA REACT
+app.use(cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+// RUTAS DEL API
 app.use("/api/auth", authRoutes);
 app.use("/api/usuarios", userRoutes);
 app.use("/api/pacientes", patientRoutes);
@@ -48,10 +57,11 @@ app.use("/api/caja/resumen", resumenCajaRoutes);
 app.use("/api/consolidado", consolidadoMensualRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/auditoria", auditoriaRoutes);
+
+// Manejador de errores
 app.use(errorHandler);
 
-
-// 🟢 Puerto
+// Puerto
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Servidor backend corriendo en http://localhost:${PORT}`);

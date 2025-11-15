@@ -106,16 +106,25 @@ export const loginUser = async (req, res) => {
       { expiresIn: "7d" }
     );
 
+    // 🔥 Guardar token en cookie HTTPOnly (IMPORTANTE)
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: false,      // en producción será true con HTTPS
+      sameSite: "lax"
+    });
+
+    // 🔥 Respuesta final
     return res.status(200).json({
       message: "Inicio de sesión exitoso.",
-      token,
       user: {
         id: user._id,
         nombre: user.nombre,
         email: user.email,
         rol: user.rol,
+        organizacion: user.organizacion,
       },
     });
+
   } catch (error) {
     console.error("Error en loginUser:", error);
     return res.status(500).json({ message: "Error del servidor." });
@@ -180,5 +189,22 @@ export const getProfile = async (req, res) => {
   } catch (error) {
     console.error("Error en getProfile:", error);
     return res.status(500).json({ message: "Error del servidor." });
+  }
+};
+
+/* =====================================================
+   ✅ 5️⃣ Verificar token y mantener sesión
+   - Usado para mantener sesión en frontend 
+===================================================== */
+export const verifyTokenController = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+
+    if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    return res.status(200).json({ user });
+  } catch (error) {
+    console.error("Error en verifyToken:", error);
+    return res.status(500).json({ message: "Error del servidor" });
   }
 };
