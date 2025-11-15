@@ -1,53 +1,50 @@
 import express from "express";
-import { crearNota, obtenerNotaPorId, editarNota, eliminarNota, obtenerNotasPorDocumento } from "../controllers/noteController.js";
+import {
+    crearNota,
+    obtenerNotaPorId,
+    editarNota,
+    eliminarNota,
+    obtenerNotasPorDocumento
+} from "../controllers/noteController.js";
+
 import { protect } from "../middlewares/authMiddleware.js";
 import { hasAccess } from "../middlewares/hasAccess.js";
 
 const router = express.Router();
 
-/**
- * 📝 Crear una nota clínica
- * Solo Fundador y Profesional pueden crear
- */
-router.post("/", protect, hasAccess(["Fundador", "Profesional"]), crearNota);
+// Crear nota clínica
+router.post(
+    "/",
+    protect,
+    hasAccess(["Fundador", "Profesional", "Asistente"]),
+    crearNota
+);
 
-/**
- * 📋 Listar todas las notas de un paciente por CC
- * Fundador y Profesional
- */
+// Listar notas por documento
 router.get(
     "/documento/:numeroDocumento",
     protect,
-    hasAccess(["Fundador", "Profesional"]),
+    hasAccess(["Fundador", "Profesional", "Asistente"]),
     obtenerNotasPorDocumento
 );
 
-/**
- * 🔍 Obtener detalle de una nota clínica
- * Fundador y Profesional
- */
+// Obtener nota
 router.get(
     "/:id",
     protect,
-    hasAccess(["Fundador", "Profesional"]),
+    hasAccess(["Fundador", "Profesional", "Asistente"]),
     obtenerNotaPorId
 );
 
-/**
- * 📝 Editar una nota clínica
- * Solo Fundador o autor de la nota
- */
+// Editar nota (Fundador + Profesional autor + Asistente)
 router.put(
     "/:id",
     protect,
-    hasAccess(["Fundador", "Profesional"]),
+    hasAccess(["Fundador", "Profesional", "Asistente"]),
     editarNota
 );
 
-/**
- * 🗑️ Eliminar una nota clínica
- * Fundador o autor
- */
+// Eliminar nota (Fundador + Profesional autor)
 router.delete(
     "/:id",
     protect,
@@ -56,4 +53,3 @@ router.delete(
 );
 
 export default router;
-

@@ -1,8 +1,15 @@
 import Transaction from "../models/Transaction.js";
 import CashRegister from "../models/CashRegister.js";
 import { inicioDelDia, finDelDia } from "../config/timezone.js";
+import {
+    recalcularResumenDiario,
+    recalcularConsolidadoMensual
+} from "../utils/recalculoCaja.js";
 
-// ➕ Crear ingreso o egreso
+/**
+ * ➕ Crear ingreso o egreso
+ * Fundador / Asistente → permitido
+ */
 export const crearTransaccion = async (req, res) => {
     try {
         const { tipo, descripcion, monto, metodoPago } = req.body;
@@ -45,7 +52,9 @@ export const crearTransaccion = async (req, res) => {
     }
 };
 
-// 🔍 Listar transacciones por ID de caja
+/**
+ * 🔍 Listar transacciones por ID de caja
+ */
 export const listarPorCaja = async (req, res) => {
     try {
         const { cajaId } = req.params;
@@ -62,7 +71,9 @@ export const listarPorCaja = async (req, res) => {
     }
 };
 
-// 📆 Listar transacciones por fecha específica
+/**
+ * 📆 Listar transacciones por fecha específica
+ */
 export const listarPorFecha = async (req, res) => {
     try {
         const { fecha } = req.query;
@@ -86,9 +97,16 @@ export const listarPorFecha = async (req, res) => {
     }
 };
 
-// 📝 Editar una transacción
+/**
+ * 📝 Editar una transacción
+ * SOLO Fundador puede editar
+ */
 export const editarTransaccion = async (req, res) => {
     try {
+        if (req.user.rol !== "Fundador") {
+            return res.status(403).json({ message: "Solo el Fundador puede editar transacciones." });
+        }
+
         const { id } = req.params;
         const { descripcion, monto, metodoPago } = req.body;
 
@@ -97,17 +115,16 @@ export const editarTransaccion = async (req, res) => {
             return res.status(404).json({ message: "Transacción no encontrada." });
         }
 
-        const esFundador = req.user.rol === "Fundador";
-        const esAutor = transaccion.profesional.toString() === req.user._id.toString();
-        if (!esFundador && !esAutor) {
-            return res.status(403).json({ message: "No tienes permisos para editar esta transacción." });
-        }
-
         transaccion.descripcion = descripcion || transaccion.descripcion;
         transaccion.monto = monto !== undefined ? monto : transaccion.monto;
         transaccion.metodoPago = metodoPago || transaccion.metodoPago;
 
         await transaccion.save();
+
+        // 🔥 RE-CÁLCULO AUTOMÁTICO
+        const fecha = transaccion.createdAt;
+        await recalcularResumenDiario(fecha, req.user.organizacion);
+        await recalcularConsolidadoMensual(fecha, req.user.organizacion);
 
         res.status(200).json({ message: "Transacción actualizada exitosamente.", transaccion });
     } catch (error) {
@@ -116,9 +133,16 @@ export const editarTransaccion = async (req, res) => {
     }
 };
 
-// 🗑️ Eliminar una transacción
+/**
+ * 🗑️ Eliminar una transacción
+ * SOLO Fundador puede eliminar
+ */
 export const eliminarTransaccion = async (req, res) => {
     try {
+        if (req.user.rol !== "Fundador") {
+            return res.status(403).json({ message: "Solo el Fundador puede eliminar transacciones." });
+        }
+
         const { id } = req.params;
 
         const transaccion = await Transaction.findById(id);
@@ -126,13 +150,14 @@ export const eliminarTransaccion = async (req, res) => {
             return res.status(404).json({ message: "Transacción no encontrada." });
         }
 
-        const esFundador = req.user.rol === "Fundador";
-        const esAutor = transaccion.profesional.toString() === req.user._id.toString();
-        if (!esFundador && !esAutor) {
-            return res.status(403).json({ message: "No tienes permisos para eliminar esta transacción." });
-        }
+        const fecha = transaccion.createdAt;
 
         await transaccion.deleteOne();
+
+        // 🔥 RE-CÁLCULO AUTOMÁTICO
+        await recalcularResumenDiario(fecha, req.user.organizacion);
+        await recalcularConsolidadoMensual(fecha, req.user.organizacion);
+
         res.status(200).json({ message: "Transacción eliminada exitosamente." });
     } catch (error) {
         console.error("Error al eliminar transacción:", error);

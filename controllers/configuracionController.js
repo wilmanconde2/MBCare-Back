@@ -3,10 +3,15 @@ import { subirArchivoFilebase } from "../services/filebaseService.js";
 
 /**
  * GET /api/configuracion
- * Obtener configuración de la organización del usuario autenticado
+ * Solo Fundador o Asistente pueden ver la configuración
+ * Profesional no accede
  */
 export const obtenerConfiguracion = async (req, res) => {
     try {
+        if (req.user.rol === "Profesional") {
+            return res.status(403).json({ message: "No tienes permisos para ver configuración." });
+        }
+
         const organizacion = await Organization.findById(req.user.organizacion);
 
         if (!organizacion) {
@@ -25,12 +30,18 @@ export const obtenerConfiguracion = async (req, res) => {
     }
 };
 
+
 /**
  * PUT /api/configuracion
- * Actualizar datos de la organización
+ * Solo Fundador puede editar configuración
+ * Asistente y Profesional bloqueados incluso desde Postman
  */
 export const actualizarConfiguracion = async (req, res) => {
     try {
+        if (req.user.rol !== "Fundador") {
+            return res.status(403).json({ message: "No tienes permisos para actualizar configuración." });
+        }
+
         const { nombre, industria, tema } = req.body;
         const organizacion = await Organization.findById(req.user.organizacion);
 
@@ -38,11 +49,6 @@ export const actualizarConfiguracion = async (req, res) => {
             return res.status(404).json({ message: "Organización no encontrada." });
         }
 
-        if (req.user.rol !== "Fundador") {
-            return res.status(403).json({ message: "Solo el Fundador puede actualizar la configuración." });
-        }
-
-        // Subir logo a Filebase (si se envía)
         if (req.file) {
             const filebaseFile = await subirArchivoFilebase(req.file);
             organizacion.logo = filebaseFile.url;

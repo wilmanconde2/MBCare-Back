@@ -34,14 +34,21 @@ const resumenCajaSchema = new mongoose.Schema(
             ref: "User",
             required: true,
         },
+
+        // 🆕 NUEVO: Marca cuándo se recalculó este resumen
+        ultimaActualizacion: {
+            type: Date,
+            default: Date.now,
+        }
     },
     {
         timestamps: true,
         versionKey: false,
+        strict: true, // 🛡️ evita que entren campos maliciosos por Postman
     }
 );
 
-// Para evitar duplicados
+// Evitar duplicados por día + organización
 resumenCajaSchema.index({ fecha: 1, organizacion: 1 }, { unique: true });
 
 export default mongoose.model("ResumenCaja", resumenCajaSchema);

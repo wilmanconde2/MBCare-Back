@@ -6,24 +6,45 @@ import {
     editarTransaccion,
     eliminarTransaccion,
 } from "../controllers/cashflowController.js";
+
 import { protect } from "../middlewares/authMiddleware.js";
 import { hasAccess } from "../middlewares/hasAccess.js";
 
 const router = express.Router();
 
-// ➕ Crear ingreso o egreso (Fundador o Profesional)
-router.post("/crear", protect, hasAccess(["Fundador", "Profesional"]), crearTransaccion);
+// Crear ingreso/egreso: Fundador + Asistente
+router.post("/crear", protect, hasAccess(["Fundador", "Asistente"]), crearTransaccion);
 
-// 🔍 Listar transacciones por ID de caja
-router.get("/transacciones/caja/:cajaId", protect, hasAccess(["Fundador", "Profesional"]), listarPorCaja);
+// Listar transacciones por caja: Fundador + Asistente
+router.get(
+    "/transacciones/caja/:cajaId",
+    protect,
+    hasAccess(["Fundador", "Asistente"]),
+    listarPorCaja
+);
 
-// 📆 Listar transacciones por fecha específica (query param)
-router.get("/transacciones/fecha", protect, hasAccess(["Fundador", "Profesional"]), listarPorFecha);
+// Listar por fecha: Fundador + Asistente
+router.get(
+    "/transacciones/fecha",
+    protect,
+    hasAccess(["Fundador", "Asistente"]),
+    listarPorFecha
+);
 
-// 📝 Editar transacción
-router.put("/transaccion/:id", protect, hasAccess(["Fundador", "Profesional"]), editarTransaccion);
+// Editar transacción: SOLO Fundador
+router.put(
+    "/transaccion/:id",
+    protect,
+    hasAccess(["Fundador"]),
+    editarTransaccion
+);
 
-// 🗑️ Eliminar transacción
-router.delete("/transaccion/:id", protect, hasAccess(["Fundador", "Profesional"]), eliminarTransaccion);
+// Eliminar transacción: SOLO Fundador
+router.delete(
+    "/transaccion/:id",
+    protect,
+    hasAccess(["Fundador"]),
+    eliminarTransaccion
+);
 
 export default router;

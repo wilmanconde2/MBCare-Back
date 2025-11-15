@@ -4,17 +4,31 @@ import ResumenCaja from "../models/ResumenCaja.js";
 import moment from "moment-timezone";
 import { inicioDelDia, finDelDia } from "../config/timezone.js";
 import { auditar } from "../utils/auditar.js";
+import { recalcularResumenDiario } from "../utils/recalculoCaja.js";   // ✔ NUEVO
 
-// 📊 Obtener métricas generales para el dashboard
+/**
+ * 📊 Obtener métricas generales para el dashboard
+ * Fundador + Asistente
+ * Profesional NO puede acceder
+ */
 export const obtenerDashboard = async (req, res) => {
     try {
+        // Bloqueo interno para Postman/Insomnia
+        if (req.user.rol === "Profesional") {
+            return res.status(403).json({
+                message: "No tienes permisos para acceder al dashboard financiero."
+            });
+        }
+
         const hoy = new Date();
         const inicioHoy = inicioDelDia(hoy);
         const finHoy = finDelDia(hoy);
-
         const organizacionId = req.user.organizacion;
 
-        // Ingresos y egresos de hoy
+        // ✔ Recalcular resumen del día antes de mostrar dashboard
+        await recalcularResumenDiario(inicioHoy, organizacionId);
+
+        // Transacciones del día
         const transaccionesHoy = await Transaction.find({
             createdAt: { $gte: inicioHoy, $lt: finHoy },
             organizacion: organizacionId,
@@ -28,13 +42,13 @@ export const obtenerDashboard = async (req, res) => {
             .filter(t => t.tipo === "Egreso")
             .reduce((acc, t) => acc + t.monto, 0);
 
-        // Cajas cerradas históricas
+        // Total cajas cerradas
         const totalCajasCerradas = await CashRegister.countDocuments({
             organizacion: organizacionId,
             abierta: false,
         });
 
-        // Resumen de últimos 7 días
+        // Resumen últimos 7 días (ya recalculado)
         const hace7dias = moment().tz("America/Bogota").subtract(7, "days").startOf("day").toDate();
         const resumenesSemana = await ResumenCaja.find({
             fecha: { $gte: hace7dias },
@@ -48,7 +62,7 @@ export const obtenerDashboard = async (req, res) => {
             saldo: r.saldoFinal,
         }));
 
-        // 🟦 Auditoría
+        // Auditoría
         await auditar(req, "CONSULTAR_DASHBOARD", {
             usuario: req.user._id,
             organizacion: req.user.organizacion

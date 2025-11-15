@@ -7,9 +7,16 @@ import { auditar } from "../utils/auditar.js";
 
 moment.locale("es");
 
-// 📊 Generar consolidado mensual
+/**
+ * 📊 Generar consolidado mensual
+ * Solo Fundador puede generar consolidado (ruta y backend lo verifican)
+ */
 export const generarResumenMensual = async (req, res) => {
     try {
+        if (req.user.rol !== "Fundador") {
+            return res.status(403).json({ message: "Solo el Fundador puede generar el consolidado mensual." });
+        }
+
         const { mes } = req.query;
 
         if (!mes || !/^\d{4}-\d{2}$/.test(mes)) {
@@ -20,19 +27,14 @@ export const generarResumenMensual = async (req, res) => {
         const numeroMes = Number(mesStr);
         const numeroAnio = Number(anio);
 
-        const yaExiste = await ConsolidadoMensual.findOne({
+        // Buscar consolidado existente
+        const existente = await ConsolidadoMensual.findOne({
             mes: numeroMes,
             anio: numeroAnio,
             organizacion: req.user.organizacion,
         });
 
-        if (yaExiste) {
-            return res.status(200).json({
-                message: "Consolidado ya existente.",
-                consolidado: yaExiste
-            });
-        }
-
+        // Fechas del mes a recalcular
         const fechaInicioMes = moment
             .tz(`${anio}-${mesStr}-01`, "America/Bogota")
             .startOf("month")
@@ -53,6 +55,22 @@ export const generarResumenMensual = async (req, res) => {
         const saldoInicial = resumenes.length > 0 ? resumenes[0].saldoInicial : 0;
         const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
 
+        // ⛔ SI EXISTE → actualizarlo en vez de devolver viejo
+        if (existente) {
+            existente.ingresosTotales = ingresosTotales;
+            existente.egresosTotales = egresosTotales;
+            existente.saldoInicial = saldoInicial;
+            existente.saldoFinal = saldoFinal;
+            existente.ultimaActualizacion = new Date();
+            await existente.save();
+
+            return res.status(200).json({
+                message: "Consolidado actualizado correctamente.",
+                consolidado: existente,
+            });
+        }
+
+        // Crear consolidado nuevo
         const consolidado = await ConsolidadoMensual.create({
             mes: numeroMes,
             anio: numeroAnio,
@@ -64,7 +82,6 @@ export const generarResumenMensual = async (req, res) => {
             creadoPor: req.user._id,
         });
 
-        // 🟦 Auditoría
         await auditar(req, "GENERAR_CONSOLIDADO_MENSUAL", {
             mes,
             ingresosTotales,
@@ -84,13 +101,25 @@ export const generarResumenMensual = async (req, res) => {
     }
 };
 
-// 🧾 Exportar consolidado mensual en PDF
+
+/**
+ * 🧾 Exportar consolidado mensual en PDF
+ * Solo Fundador puede exportar
+ */
 export const exportarResumenMensualPDF = async (req, res) => {
     try {
+        if (req.user.rol !== "Fundador") {
+            return res
+                .status(403)
+                .json({ message: "Solo el Fundador puede exportar el consolidado mensual." });
+        }
+
         const { mes } = req.query;
 
         if (!mes || !/^\d{4}-\d{2}$/.test(mes)) {
-            return res.status(400).json({ message: "El parámetro 'mes' debe tener el formato YYYY-MM." });
+            return res.status(400).json({
+                message: "El parámetro 'mes' debe tener el formato YYYY-MM."
+            });
         }
 
         const [anio, mesStr] = mes.split("-");
@@ -107,7 +136,6 @@ export const exportarResumenMensualPDF = async (req, res) => {
             return res.status(404).json({ message: "No hay consolidado para ese mes." });
         }
 
-        // 🟦 Auditoría
         await auditar(req, "EXPORTAR_CONSOLIDADO_PDF", {
             mes,
             consolidadoId: consolidado._id

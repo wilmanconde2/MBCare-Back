@@ -1,10 +1,8 @@
 import express from "express";
-import { obtenerConfiguracion } from "../controllers/configuracionController.js";
+import { obtenerConfiguracion, actualizarConfiguracion } from "../controllers/configuracionController.js";
 import { protect } from "../middlewares/authMiddleware.js";
-import { actualizarConfiguracion } from "../controllers/configuracionController.js";
 import { upload } from "../middlewares/multer.js";
 import { hasAccess } from "../middlewares/hasAccess.js";
-
 
 const router = express.Router();
 
@@ -15,7 +13,7 @@ router.get("/", protect, obtenerConfiguracion);
 router.put(
     "/",
     protect,
-    hasAccess("Fundador"),
+    hasAccess(["Fundador"]),
     upload.single("logo"),
     actualizarConfiguracion
 );

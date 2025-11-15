@@ -2,15 +2,23 @@ import ResumenCaja from "../models/ResumenCaja.js";
 import Transaction from "../models/Transaction.js";
 import CashRegister from "../models/CashRegister.js";
 import { inicioDelDia, finDelDia } from "../config/timezone.js";
+import { recalcularResumenDiario } from "../utils/recalculoCaja.js";
 
-/**
- * 📊 Generar y guardar resumen diario de caja
- * Si ya existe para ese día, lo devuelve sin recalcular
- */
+/* ========================================================================
+   📊 Generar y guardar resumen diario de caja
+   Fundador → permitido
+   Asistente → permitido
+   Profesional → PROHIBIDO
+========================================================================= */
 export const generarResumen = async (req, res) => {
     try {
-        const { fecha } = req.query;
+        if (req.user.rol === "Profesional") {
+            return res.status(403).json({
+                message: "No tienes permisos para generar resúmenes de caja."
+            });
+        }
 
+        const { fecha } = req.query;
         if (!fecha) {
             return res.status(400).json({ message: "La fecha es obligatoria." });
         }
@@ -18,7 +26,6 @@ export const generarResumen = async (req, res) => {
         const inicioDia = inicioDelDia(fecha);
         const finDia = finDelDia(fecha);
 
-        // Verificar si ya existe resumen
         let resumenExistente = await ResumenCaja.findOne({
             fecha: inicioDia,
             organizacion: req.user.organizacion,
@@ -31,7 +38,6 @@ export const generarResumen = async (req, res) => {
             });
         }
 
-        // Traer caja del día
         const caja = await CashRegister.findOne({
             fecha: { $gte: inicioDia, $lte: finDia },
             organizacion: req.user.organizacion,
@@ -43,7 +49,6 @@ export const generarResumen = async (req, res) => {
 
         const saldoInicial = caja.saldoInicial || 0;
 
-        // Transacciones del día
         const transacciones = await Transaction.find({
             createdAt: { $gte: inicioDia, $lte: finDia },
             organizacion: req.user.organizacion,
@@ -59,7 +64,6 @@ export const generarResumen = async (req, res) => {
 
         const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
 
-        // Crear resumen
         const resumen = await ResumenCaja.create({
             fecha: inicioDia,
             organizacion: req.user.organizacion,
@@ -69,6 +73,9 @@ export const generarResumen = async (req, res) => {
             saldoFinal,
             creadoPor: req.user._id,
         });
+
+        // ✔ Recalcular después de crear
+        await recalcularResumenDiario(inicioDia, req.user.organizacion);
 
         res.status(201).json({
             message: "Resumen generado exitosamente.",
@@ -80,18 +87,26 @@ export const generarResumen = async (req, res) => {
     }
 };
 
-/**
- * 📋 Consultar resumen diario por fecha (sin generar uno nuevo)
- */
+/* ========================================================================
+   📋 Consultar resumen diario por fecha
+========================================================================= */
 export const consultarResumen = async (req, res) => {
     try {
-        const { fecha } = req.query;
+        if (req.user.rol === "Profesional") {
+            return res.status(403).json({
+                message: "No tienes permisos para consultar resúmenes de caja."
+            });
+        }
 
+        const { fecha } = req.query;
         if (!fecha) {
             return res.status(400).json({ message: "La fecha es obligatoria." });
         }
 
         const inicioDia = inicioDelDia(fecha);
+
+        // ✔ Siempre recalcula antes de devolver
+        await recalcularResumenDiario(inicioDia, req.user.organizacion);
 
         const resumen = await ResumenCaja.findOne({
             fecha: inicioDia,
@@ -103,6 +118,7 @@ export const consultarResumen = async (req, res) => {
         }
 
         res.status(200).json({ resumen });
+
     } catch (error) {
         console.error("Error al consultar resumen:", error);
         res.status(500).json({ message: "Error al consultar resumen de caja." });

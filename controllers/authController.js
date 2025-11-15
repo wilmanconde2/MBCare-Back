@@ -5,35 +5,43 @@ import Organization from "../models/Organization.js";
 
 /* =====================================================
    🧩 1️⃣ Registrar Fundador y crear Organización
+   - Solo se permite si NO existe un Fundador
+   - Protegido contra Postman: nadie puede crear otro
 ===================================================== */
 export const registerFundador = async (req, res) => {
   try {
     const { nombre, email, password, industria, nombreOrganizacion } = req.body;
 
+    // Validación
     if (!nombre || !email || !password || !industria || !nombreOrganizacion) {
       return res.status(400).json({ message: "Todos los campos son obligatorios." });
     }
 
+    // 🔒 Solo permitir si no existe Fundador
     const fundadorExiste = await User.findOne({ rol: "Fundador" });
     if (fundadorExiste) {
-      return res.status(400).json({ message: "Ya existe un usuario Fundador." });
+      return res.status(403).json({
+        message: "Ya existe un Fundador registrado. Registro bloqueado."
+      });
     }
 
+    // No permitir duplicar email
     const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json({ message: "Este email ya está en uso." });
     }
 
+    // Encriptar contraseña
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Crear organización asociada
+    // Crear organización base
     const organizacion = await Organization.create({
       nombre: nombreOrganizacion,
       industria,
     });
 
-    // Crear usuario fundador
+    // Crear fundador
     const user = await User.create({
       nombre,
       email,
@@ -44,7 +52,6 @@ export const registerFundador = async (req, res) => {
       debeCambiarPassword: false,
     });
 
-    // Vincular la organización con el Fundador
     organizacion.creadaPor = user._id;
     await organizacion.save();
 
@@ -60,19 +67,31 @@ export const registerFundador = async (req, res) => {
     });
   } catch (error) {
     console.error("Error en registerFundador:", error);
-    res.status(500).json({ message: "Error al registrar usuario Fundador." });
+    res.status(500).json({ message: "Error al registrar Fundador." });
   }
 };
 
+
 /* =====================================================
    🔐 2️⃣ Login de usuario
+   - Protección para bloqueos y roles
 ===================================================== */
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email y contraseña son obligatorios." });
+    }
+
+    const user = await User.findOne({ email, activo: true });
+
+    if (!user) {
+      return res.status(400).json({ message: "Credenciales inválidas." });
+    }
+
+    const passMatch = await bcrypt.compare(password, user.password);
+    if (!passMatch) {
       return res.status(400).json({ message: "Credenciales inválidas." });
     }
 
@@ -81,6 +100,7 @@ export const loginUser = async (req, res) => {
         id: user._id,
         rol: user.rol,
         email: user.email,
+        organizacion: user.organizacion,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -102,8 +122,10 @@ export const loginUser = async (req, res) => {
   }
 };
 
+
 /* =====================================================
    🔑 3️⃣ Cambiar contraseña
+   - Cualquier usuario autenticado puede hacerlo
 ===================================================== */
 export const changePassword = async (req, res) => {
   try {
@@ -131,8 +153,10 @@ export const changePassword = async (req, res) => {
   }
 };
 
+
 /* =====================================================
    👤 4️⃣ Obtener perfil del usuario autenticado
+   - Protección contra acceso cruzado entre organizaciones
 ===================================================== */
 export const getProfile = async (req, res) => {
   try {
@@ -145,6 +169,11 @@ export const getProfile = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ message: "Usuario no encontrado." });
+    }
+
+    // 🔒 Protección: un usuario jamás puede ver otro perfil
+    if (user._id.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: "Acceso no autorizado." });
     }
 
     return res.status(200).json(user);

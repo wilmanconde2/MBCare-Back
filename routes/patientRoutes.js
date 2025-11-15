@@ -12,22 +12,21 @@ import { hasAccess } from "../middlewares/hasAccess.js";
 
 const router = express.Router();
 
-// Todas las rutas requieren token válido
 router.use(protect);
 
-// 🔹 Listar todos los pacientes
-router.get("/", hasAccess("pacientes", "listar"), listarPacientes);
+// Listar todos los pacientes
+router.get("/", hasAccess(["Fundador", "Profesional", "Asistente"]), listarPacientes);
 
-// 🔹 Crear paciente
-router.post("/", hasAccess("pacientes", "crear"), crearPaciente);
+// Crear paciente
+router.post("/", hasAccess(["Fundador", "Profesional", "Asistente"]), crearPaciente);
 
-// 🔹 Obtener un paciente específico
-router.get("/:id", hasAccess("pacientes", "listar"), obtenerPacientePorId);
+// Obtener paciente
+router.get("/:id", hasAccess(["Fundador", "Profesional", "Asistente"]), obtenerPacientePorId);
 
-// 🔹 Actualizar paciente
-router.put("/:id", hasAccess("pacientes", "editar"), actualizarPaciente);
+// Actualizar paciente
+router.put("/:id", hasAccess(["Fundador", "Profesional", "Asistente"]), actualizarPaciente);
 
-// 🔹 Eliminar paciente (solo Fundador)
-router.delete("/:id", hasAccess("pacientes", "eliminar"), eliminarPaciente);
+// Eliminar paciente (solo Fundador)
+router.delete("/:id", hasAccess(["Fundador"]), eliminarPaciente);
 
 export default router;

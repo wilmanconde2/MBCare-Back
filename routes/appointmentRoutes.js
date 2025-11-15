@@ -1,24 +1,75 @@
 import express from "express";
-import { crearCita, obtenerCitasOrganizacion, editarCita, cancelarCita, exportarCitas } from "../controllers/appointmentController.js";
+import {
+    crearCita,
+    obtenerCitasOrganizacion,
+    editarCita,
+    cancelarCita,
+    exportarCitas
+} from "../controllers/appointmentController.js";
+
 import { protect } from "../middlewares/authMiddleware.js";
 import { hasAccess } from "../middlewares/hasAccess.js";
 
 const router = express.Router();
 
-// 🔍 Obtener citas de la organización
-router.get("/", protect, hasAccess(["Fundador", "Profesional"]), obtenerCitasOrganizacion);
+/**
+ * 🔍 Listar citas
+ * Fundador → todas
+ * Asistente → todas
+ * Profesional → solo propias
+ */
+router.get(
+    "/",
+    protect,
+    hasAccess(["Fundador", "Profesional", "Asistente"]),
+    obtenerCitasOrganizacion
+);
 
-// Crear cita (solo Profesional o Fundador)
-router.post("/", protect, hasAccess(["Fundador", "Profesional"]), crearCita);
+/**
+ * 🟢 Crear cita
+ * Fundador → todas
+ * Asistente → todas
+ * Profesional → siempre se asigna a sí mismo (validado en controller)
+ */
+router.post(
+    "/",
+    protect,
+    hasAccess(["Fundador", "Profesional", "Asistente"]),
+    crearCita
+);
 
-// 📝 Editar una cita existente
-router.put("/:id", protect, hasAccess(["Fundador", "Profesional"]), editarCita);
+/**
+ * 📝 Editar cita
+ * Profesional solo edita las propias (validado en controller)
+ */
+router.put(
+    "/:id",
+    protect,
+    hasAccess(["Fundador", "Profesional", "Asistente"]),
+    editarCita
+);
 
-// ❌ Cancelar una cita
-router.put("/cancelar/:id", protect, hasAccess(["Fundador", "Profesional"]), cancelarCita);
+/**
+ * ❌ Cancelar cita
+ * Profesional solo cancela las propias (validado en controller)
+ */
+router.put(
+    "/cancelar/:id",
+    protect,
+    hasAccess(["Fundador", "Profesional", "Asistente"]),
+    cancelarCita
+);
 
-// 📤 Exportar citas resumidas
-router.get("/exportar", protect, hasAccess(["Fundador", "Profesional"]), exportarCitas);
-
+/**
+ * 📤 Exportar citas
+ * Profesional → bloqueado
+ * Fundador/Asistente → permitido
+ */
+router.get(
+    "/exportar",
+    protect,
+    hasAccess(["Fundador", "Asistente"]),
+    exportarCitas
+);
 
 export default router;

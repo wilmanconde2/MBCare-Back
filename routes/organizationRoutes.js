@@ -5,7 +5,7 @@ import { hasAccess } from "../middlewares/hasAccess.js";
 
 const router = express.Router();
 
-// Fundador crea usuarios con rol Profesional o Asistente
+// Solo Fundador puede crear usuarios con rol Profesional o Asistente
 router.post(
     "/crear-usuario",
     protect,

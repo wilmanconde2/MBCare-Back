@@ -1,16 +1,18 @@
 import Patient from "../models/Patient.js";
 
-// 🔸 Crear nuevo paciente
+/**
+ * 🔸 Crear nuevo paciente
+ * Fundador / Profesional / Asistente → permitido
+ */
 export const crearPaciente = async (req, res) => {
     try {
         const { nombreCompleto, numeroDocumento } = req.body;
 
-        // Validación básica
         if (!nombreCompleto) {
             return res.status(400).json({ message: "El nombre es obligatorio" });
         }
 
-        // Evitar duplicados por documento (si aplica)
+        // Evitar duplicados por documento
         if (numeroDocumento) {
             const existe = await Patient.findOne({
                 numeroDocumento,
@@ -37,17 +39,26 @@ export const crearPaciente = async (req, res) => {
     }
 };
 
-// 🔸 Listar pacientes por organización
+/**
+ * 🔸 Listar pacientes por organización
+ * Fundador / Profesional / Asistente → permitido
+ */
 export const listarPacientes = async (req, res) => {
     try {
-        const pacientes = await Patient.find({ organizacion: req.user.organizacion }).sort({ createdAt: -1 });
+        const pacientes = await Patient.find({
+            organizacion: req.user.organizacion,
+        }).sort({ createdAt: -1 });
+
         res.status(200).json(pacientes);
     } catch (error) {
         res.status(500).json({ message: "Error al obtener pacientes" });
     }
 };
 
-// 🔸 Obtener un solo paciente
+/**
+ * 🔸 Obtener un solo paciente
+ * Fundador / Profesional / Asistente → permitido
+ */
 export const obtenerPacientePorId = async (req, res) => {
     try {
         const paciente = await Patient.findOne({
@@ -65,7 +76,10 @@ export const obtenerPacientePorId = async (req, res) => {
     }
 };
 
-// 🔸 Actualizar paciente
+/**
+ * 🔸 Actualizar paciente
+ * Fundador / Profesional / Asistente → permitido
+ */
 export const actualizarPaciente = async (req, res) => {
     try {
         const paciente = await Patient.findOneAndUpdate(
@@ -87,9 +101,17 @@ export const actualizarPaciente = async (req, res) => {
     }
 };
 
-// 🔸 Eliminar paciente (solo Fundador)
+/**
+ * 🔸 Eliminar paciente
+ * SOLO Fundador puede eliminar (validado en ruta + validación extra aquí)
+ */
 export const eliminarPaciente = async (req, res) => {
     try {
+        // Validación extra de seguridad
+        if (req.user.rol !== "Fundador") {
+            return res.status(403).json({ message: "No tienes permisos para eliminar pacientes." });
+        }
+
         const paciente = await Patient.findOneAndDelete({
             _id: req.params.id,
             organizacion: req.user.organizacion,

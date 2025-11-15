@@ -3,29 +3,54 @@ const permissionsMatrix = {
         listar: ["Fundador", "Profesional", "Asistente"],
         crear: ["Fundador", "Profesional", "Asistente"],
         editar: ["Fundador", "Profesional", "Asistente"],
-        eliminar: ["Fundador"],
+        eliminar: ["Fundador"], 
     },
+
     citas: {
         ver: ["Fundador", "Profesional", "Asistente"],
         crear: ["Fundador", "Profesional", "Asistente"],
-        eliminar: ["Fundador", "Profesional", "Asistente"],
+        editar: ["Fundador", "Profesional", "Asistente"],
+        cancelar: ["Fundador", "Profesional", "Asistente"],
     },
+
     notas: {
-        ver: ["Fundador", "Profesional"],
-        crear: ["Fundador", "Profesional"],
-        eliminar: ["Fundador", "Profesional"],
+        ver: ["Fundador", "Profesional", "Asistente"],           
+        crear: ["Fundador", "Profesional", "Asistente"],        
+        editar: ["Fundador", "Profesional", "Asistente"],       
+        eliminar: ["Fundador", "Profesional"],                  
     },
+
     adjuntos: {
-        subir: ["Fundador", "Profesional"],
+        subir: ["Fundador", "Profesional"],                    
+        ver: ["Fundador", "Profesional", "Asistente"],
+        eliminar: ["Fundador", "Profesional"],                 
     },
-    configuracion: {
-        acceder: ["Fundador"],
+
+    transacciones: {
+        crear: ["Fundador", "Asistente"],                       
+        editar: ["Fundador"],                                   
+        eliminar: ["Fundador"],                                 
+        ver: ["Fundador", "Asistente"],                         
     },
-    reportes: {
-        ver: ["Fundador", "Profesional"],
+
+    caja: {
+        abrir: ["Fundador", "Asistente"],
+        cerrar: ["Fundador", "Asistente"],
+        historial: ["Fundador", "Asistente"],
         exportar: ["Fundador"],
     },
+
+    configuracion: {
+        acceder: ["Fundador", "Profesional", "Asistente"],
+        editar: ["Fundador"],
+    },
+
+    reportes: {
+        ver: ["Fundador", "Profesional"],
+        exportar: ["Fundador", "Profesional"],                  
+    },
 };
+
 
 /**
  * Middleware que permite acceso por:
@@ -40,7 +65,7 @@ export const hasAccess = (moduloOrRol, accion = null) => {
             return res.status(401).json({ message: "Token inválido o faltante." });
         }
 
-        // 🔒 Control global por rol (solo se pasa un argumento)
+        // 🔒 Control global por rol directo
         if (!accion) {
             const rolesPermitidos = Array.isArray(moduloOrRol)
                 ? moduloOrRol
@@ -53,7 +78,7 @@ export const hasAccess = (moduloOrRol, accion = null) => {
             return next();
         }
 
-        // 🔐 Control granular por módulo/acción
+        // 🔐 Control granular módulo-acción
         const permisosModulo = permissionsMatrix[moduloOrRol];
 
         if (!permisosModulo || !permisosModulo[accion]) {

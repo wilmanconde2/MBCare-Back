@@ -5,8 +5,11 @@ import { inicioDelDia, finDelDia } from "../config/timezone.js";
 import moment from "moment-timezone";
 import PDFDocument from "pdfkit";
 import { auditar } from "../utils/auditar.js";
+import { recalcularResumenDiario } from "../utils/recalculoCaja.js";   // ✔ NUEVO
 
-// 🟦 Abrir Caja del Día
+/**
+ * 🟦 Abrir Caja del Día
+ */
 export const abrirCaja = async (req, res) => {
     try {
         const { saldoInicial } = req.body;
@@ -37,7 +40,6 @@ export const abrirCaja = async (req, res) => {
             fecha: hoyInicio,
         });
 
-        // Auditoría
         await auditar(req, "ABRIR_CAJA", {
             cajaId: nuevaCaja._id,
             saldoInicial
@@ -53,7 +55,10 @@ export const abrirCaja = async (req, res) => {
     }
 };
 
-// 🔒 Cerrar Caja del Día
+
+/**
+ * 🔒 Cerrar Caja del Día
+ */
 export const cerrarCaja = async (req, res) => {
     try {
         const hoyInicio = inicioDelDia();
@@ -106,7 +111,6 @@ export const cerrarCaja = async (req, res) => {
             });
         }
 
-        // Auditoría
         await auditar(req, "CERRAR_CAJA", {
             cajaId: caja._id,
             ingresos: totalIngresos,
@@ -114,6 +118,9 @@ export const cerrarCaja = async (req, res) => {
             saldoInicial: caja.saldoInicial,
             saldoFinal
         });
+
+        // ✔ Recalcula resumen del día después de cerrar la caja
+        await recalcularResumenDiario(hoyInicio, req.user.organizacion);
 
         res.status(200).json({
             message: "Caja cerrada exitosamente.",
@@ -130,9 +137,16 @@ export const cerrarCaja = async (req, res) => {
     }
 };
 
-// 📁 Listar historial de cajas cerradas
+
+/**
+ * 📁 Listar historial de cajas cerradas
+ */
 export const historialCajas = async (req, res) => {
     try {
+        if (req.user.rol === "Profesional") {
+            return res.status(403).json({ message: "No tienes permisos para acceder al historial de caja." });
+        }
+
         const organizacionId = req.user.organizacion;
         const { page = 1, limit = 10, desde, hasta, profesionalId, mes } = req.query;
 
@@ -166,6 +180,11 @@ export const historialCajas = async (req, res) => {
             .skip(skip)
             .limit(parseInt(limit));
 
+        /* ✔ NUEVO: Recalcular cada fecha antes de mostrar */
+        for (const caja of cajas) {
+            await recalcularResumenDiario(caja.fecha, organizacionId);
+        }
+
         const total = await CashRegister.countDocuments(filtros);
 
         res.status(200).json({
@@ -180,9 +199,16 @@ export const historialCajas = async (req, res) => {
     }
 };
 
-// 📤 Exportar historial en PDF
+
+/**
+ * 📤 Exportar historial en PDF
+ */
 export const exportarHistorialCajaPDF = async (req, res) => {
     try {
+        if (req.user.rol !== "Fundador") {
+            return res.status(403).json({ message: "No tienes permisos para exportar historial de caja." });
+        }
+
         const { desde, hasta, profesionalId, mes } = req.query;
 
         const filtros = {
@@ -201,7 +227,7 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             };
         }
 
-        if (req.user.rol === "Fundador" && profesionalId) {
+        if (profesionalId) {
             filtros.profesional = profesionalId;
         }
 
@@ -209,7 +235,11 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             .populate("profesional", "nombre email")
             .sort({ fecha: -1 });
 
-        // Auditoría
+        /* ✔ NUEVO: recalcular antes de exportar */
+        for (const caja of cajas) {
+            await recalcularResumenDiario(caja.fecha, req.user.organizacion);
+        }
+
         await auditar(req, "EXPORTAR_HISTORIAL_PDF", { filtros: req.query });
 
         const doc = new PDFDocument();

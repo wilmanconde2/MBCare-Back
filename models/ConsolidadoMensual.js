@@ -42,14 +42,21 @@ const consolidadoMensualSchema = new mongoose.Schema(
             ref: "User",
             required: true,
         },
+
+        // 🆕 Marca cuándo se actualizó por última vez (para recalcular)
+        ultimaActualizacion: {
+            type: Date,
+            default: Date.now,
+        },
     },
     {
         timestamps: true,
         versionKey: false,
+        strict: true,
     }
 );
 
-// Asegura que solo haya un consolidado por mes, año y organización
+// Un solo consolidado por mes + año + organización
 consolidadoMensualSchema.index(
     { mes: 1, anio: 1, organizacion: 1 },
     { unique: true }

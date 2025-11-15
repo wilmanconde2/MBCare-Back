@@ -15,6 +15,8 @@ import resumenCajaRoutes from "./routes/resumenCajaRoutes.js";
 import consolidadoMensualRoutes from "./routes/consolidadoMensualRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import auditoriaRoutes from "./routes/auditoriaRoutes.js";
+import { errorHandler } from "./middlewares/errorHandler.js";
+
 
 // Rutas de auth y usuarios
 import authRoutes from "./routes/authRoutes.js";
@@ -40,12 +42,14 @@ app.use("/api/notas", noteRoutes);
 app.use("/api/adjuntos", attachmentRoutes);
 app.use("/api/configuracion", configuracionRoutes);
 app.use("/api/caja", cajaRoutes);
-app.use("/api/caja", cashflowRoutes);
+app.use("/api/caja/flujo", cashflowRoutes);
 app.use("/api/reportes", reportesRoutes);
 app.use("/api/caja/resumen", resumenCajaRoutes);
 app.use("/api/consolidado", consolidadoMensualRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/auditoria", auditoriaRoutes);
+app.use(errorHandler);
+
 
 // 🟢 Puerto
 const PORT = process.env.PORT || 5000;

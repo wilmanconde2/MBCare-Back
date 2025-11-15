@@ -12,7 +12,9 @@ import { upload } from "../middlewares/multer.js"; // debe usar memoryStorage
 const router = express.Router();
 
 /**
- * 📤 Subir archivo clínico (Fundador o Profesional)
+ * 📤 Subir archivo clínico
+ * Permitido: Fundador, Profesional
+ * Asistente: NO
  */
 router.post(
     "/subir",
@@ -23,7 +25,9 @@ router.post(
 );
 
 /**
- * 🔍 Obtener todos los archivos de un paciente
+ * 🔍 Obtener adjuntos de un paciente
+ * Fundador → todos
+ * Profesional → solo los propios (controlado en controller)
  */
 router.get(
     "/paciente/:pacienteId",
@@ -33,7 +37,9 @@ router.get(
 );
 
 /**
- * 🗑️ Eliminar archivo clínico
+ * 🗑️ Eliminar adjunto
+ * Fundador → todos
+ * Profesional → solo los propios
  */
 router.delete(
     "/:id",

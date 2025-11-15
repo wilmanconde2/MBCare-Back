@@ -2,11 +2,16 @@ import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 
 /**
- * Crea un usuario profesional o asistente dentro de la misma organización del fundador
- * Requiere autenticación y rol Fundador
+ * Crear usuario Profesional o Asistente
+ * Solo Fundador puede crear (validación fuerte contra Postman)
  */
 export const crearUsuarioPorRol = async (req, res) => {
     try {
+        // 🔒 Seguridad: solo Fundador
+        if (req.user.rol !== "Fundador") {
+            return res.status(403).json({ message: "No tienes permisos para crear usuarios." });
+        }
+
         const { nombre, email, rol } = req.body;
 
         if (!nombre || !email || !rol) {
@@ -45,9 +50,10 @@ export const crearUsuarioPorRol = async (req, res) => {
                 email: nuevoUsuario.email,
                 rol: nuevoUsuario.rol,
                 organizacion: nuevoUsuario.organizacion,
-                temporalPassword: tempPassword, // solo para desarrollo (remover en producción)
-            },
+                temporalPassword: tempPassword // eliminar en producción
+            }
         });
+
     } catch (error) {
         console.error("Error en crearUsuarioPorRol:", error);
         return res.status(500).json({ message: "Error del servidor." });

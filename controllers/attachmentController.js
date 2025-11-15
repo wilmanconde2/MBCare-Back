@@ -2,7 +2,9 @@ import Attachment from "../models/Attachment.js";
 import { subirArchivoFilebase, eliminarArchivoFilebase } from "../services/filebaseService.js";
 
 /**
- * 📤 Subir archivo clínico a Filebase y guardar referencia en la BD
+ * 📤 Subir archivo clínico
+ * Fundador / Profesional / Asistente → permitido
+ * Profesional siempre queda como autor del adjunto
  */
 export const subirAdjunto = async (req, res) => {
     try {
@@ -16,7 +18,7 @@ export const subirAdjunto = async (req, res) => {
 
         const adjunto = await Attachment.create({
             paciente,
-            profesional: req.user._id,
+            profesional: req.user._id, // autor
             organizacion: req.user.organizacion,
             url: filebaseFile.url,
             public_id: filebaseFile.public_id,
@@ -35,16 +37,26 @@ export const subirAdjunto = async (req, res) => {
 };
 
 /**
- * 🔍 Obtener todos los adjuntos clínicos de un paciente
+ * 🔍 Obtener adjuntos de un paciente
+ * Fundador → ve todo
+ * Asistente → ve todo
+ * Profesional → solo ve los suyos (sus adjuntos)
  */
 export const obtenerAdjuntosPorPaciente = async (req, res) => {
     try {
         const { pacienteId } = req.params;
 
-        const adjuntos = await Attachment.find({
+        const filtro = {
             paciente: pacienteId,
             organizacion: req.user.organizacion,
-        })
+        };
+
+        // Profesional → solo sus adjuntos
+        if (req.user.rol === "Profesional") {
+            filtro.profesional = req.user._id;
+        }
+
+        const adjuntos = await Attachment.find(filtro)
             .populate("profesional", "nombre email")
             .sort({ createdAt: -1 });
 
@@ -56,7 +68,10 @@ export const obtenerAdjuntosPorPaciente = async (req, res) => {
 };
 
 /**
- * 🗑️ Eliminar adjunto clínico (Fundador o autor)
+ * 🗑️ Eliminar adjunto clínico
+ * Fundador → puede eliminar
+ * Profesional → solo si es autor
+ * Asistente → NO puede eliminar
  */
 export const eliminarAdjunto = async (req, res) => {
     try {
@@ -71,6 +86,12 @@ export const eliminarAdjunto = async (req, res) => {
         const esFundador = req.user.rol === "Fundador";
         const esAutor = adjunto.profesional.toString() === req.user._id.toString();
 
+        // ❌ Asistente NO puede eliminar nada
+        if (req.user.rol === "Asistente") {
+            return res.status(403).json({ message: "No tienes permiso para eliminar adjuntos." });
+        }
+
+        // Profesional solo puede borrar sus propios adjuntos
         if (!esFundador && !esAutor) {
             return res.status(403).json({ message: "No tienes permisos para eliminar este adjunto." });
         }

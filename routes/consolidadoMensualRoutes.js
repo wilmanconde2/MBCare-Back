@@ -10,7 +10,7 @@ const router = express.Router();
 
 /**
  * 📈 Generar resumen mensual de caja
- * Fundador y Profesional pueden consultar
+ * SOLO Fundador puede generar y exportar
  * Requiere query param: ?mes=YYYY-MM
  */
 router.get("/generar", protect, hasAccess(["Fundador"]), generarResumenMensual);

@@ -4,6 +4,8 @@ import Patient from "../models/Patient.js";
 
 /**
  * 📝 Crear una nueva nota clínica
+ * Fundador, Profesional y Asistente pueden crear
+ * Profesional siempre se asigna a sí mismo
  */
 export const crearNota = async (req, res) => {
     try {
@@ -41,6 +43,9 @@ export const crearNota = async (req, res) => {
 
 /**
  * 📋 Listar todas las notas clínicas de un paciente (por ObjectId)
+ * Fundador → todas
+ * Asistente → todas
+ * Profesional → SOLO SUS notas
  */
 export const obtenerNotasPorPaciente = async (req, res) => {
     try {
@@ -50,10 +55,17 @@ export const obtenerNotasPorPaciente = async (req, res) => {
             return res.status(400).json({ message: "ID de paciente inválido." });
         }
 
-        const notas = await Note.find({
+        const filtro = {
             paciente: pacienteId,
             organizacion: req.user.organizacion,
-        })
+        };
+
+        // Profesional solo puede ver sus notas
+        if (req.user.rol === "Profesional") {
+            filtro.profesional = req.user._id;
+        }
+
+        const notas = await Note.find(filtro)
             .populate("profesional", "nombre email")
             .sort({ createdAt: -1 });
 
@@ -66,6 +78,9 @@ export const obtenerNotasPorPaciente = async (req, res) => {
 
 /**
  * 📋 Obtener notas por número de documento (validando organización)
+ * Fundador → todas
+ * Asistente → todas
+ * Profesional → solo sus notas
  */
 export const obtenerNotasPorDocumento = async (req, res) => {
     try {
@@ -75,7 +90,6 @@ export const obtenerNotasPorDocumento = async (req, res) => {
             return res.status(400).json({ message: "El número de documento es obligatorio." });
         }
 
-        // Buscar paciente dentro de la organización actual
         const paciente = await Patient.findOne({
             numeroDocumento,
             organizacion: req.user.organizacion,
@@ -85,10 +99,17 @@ export const obtenerNotasPorDocumento = async (req, res) => {
             return res.status(404).json({ message: "Paciente no encontrado en esta organización." });
         }
 
-        const notas = await Note.find({
+        const filtro = {
             paciente: paciente._id,
             organizacion: req.user.organizacion,
-        })
+        };
+
+        // Profesional solo ve sus notas
+        if (req.user.rol === "Profesional") {
+            filtro.profesional = req.user._id;
+        }
+
+        const notas = await Note.find(filtro)
             .populate("profesional", "nombre email")
             .sort({ createdAt: -1 });
 
@@ -101,6 +122,9 @@ export const obtenerNotasPorDocumento = async (req, res) => {
 
 /**
  * 🔍 Obtener una nota por ID
+ * Fundador → puede ver
+ * Asistente → puede ver
+ * Profesional → solo sus notas
  */
 export const obtenerNotaPorId = async (req, res) => {
     try {
@@ -119,6 +143,11 @@ export const obtenerNotaPorId = async (req, res) => {
             return res.status(404).json({ message: "Nota no encontrada." });
         }
 
+        // Profesional solo puede ver sus notas
+        if (req.user.rol === "Profesional" && nota.profesional.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: "No tienes permisos para ver esta nota." });
+        }
+
         res.status(200).json({ nota });
     } catch (error) {
         console.error("Error al obtener nota por ID:", error);
@@ -128,6 +157,9 @@ export const obtenerNotaPorId = async (req, res) => {
 
 /**
  * 📝 Editar una nota clínica existente
+ * Fundador → todas
+ * Asistente → todas
+ * Profesional → solo sus notas
  */
 export const editarNota = async (req, res) => {
     try {
@@ -145,9 +177,12 @@ export const editarNota = async (req, res) => {
         }
 
         const esFundador = req.user.rol === "Fundador";
+        const esAsistente = req.user.rol === "Asistente";
         const esAutor = nota.profesional.toString() === req.user._id.toString();
 
-        if (!esFundador && !esAutor) {
+        // Profesional: solo edita sus notas
+        // Asistente: puede editar todas
+        if (!esFundador && !esAsistente && !esAutor) {
             return res.status(403).json({ message: "No tienes permisos para editar esta nota." });
         }
 
@@ -170,6 +205,9 @@ export const editarNota = async (req, res) => {
 
 /**
  * 🗑️ Eliminar una nota clínica
+ * Fundador → puede eliminar
+ * Profesional → solo si es suya
+ * Asistente → NO puede eliminar
  */
 export const eliminarNota = async (req, res) => {
     try {
@@ -188,6 +226,12 @@ export const eliminarNota = async (req, res) => {
         const esFundador = req.user.rol === "Fundador";
         const esAutor = nota.profesional.toString() === req.user._id.toString();
 
+        // Asistente nunca puede eliminar
+        if (req.user.rol === "Asistente") {
+            return res.status(403).json({ message: "No tienes permiso para eliminar notas." });
+        }
+
+        // Profesional solo elimina sus notas
         if (!esFundador && !esAutor) {
             return res.status(403).json({ message: "No tienes permisos para eliminar esta nota." });
         }
