@@ -3,6 +3,7 @@ import CashRegister from "../models/CashRegister.js";
 import ResumenCaja from "../models/ResumenCaja.js";
 import moment from "moment-timezone";
 import { inicioDelDia, finDelDia } from "../config/timezone.js";
+import { auditar } from "../utils/auditar.js";
 
 // 📊 Obtener métricas generales para el dashboard
 export const obtenerDashboard = async (req, res) => {
@@ -47,6 +48,12 @@ export const obtenerDashboard = async (req, res) => {
             saldo: r.saldoFinal,
         }));
 
+        // 🟦 Auditoría
+        await auditar(req, "CONSULTAR_DASHBOARD", {
+            usuario: req.user._id,
+            organizacion: req.user.organizacion
+        });
+
         res.status(200).json({
             hoy: {
                 ingresos: totalIngresosHoy,
@@ -55,9 +62,9 @@ export const obtenerDashboard = async (req, res) => {
             cajasCerradas: totalCajasCerradas,
             resumen7dias,
         });
+
     } catch (error) {
         console.error("Error en dashboard:", error);
         res.status(500).json({ message: "Error al obtener métricas del dashboard." });
     }
 };
-

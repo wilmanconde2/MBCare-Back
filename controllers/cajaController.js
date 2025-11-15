@@ -1,9 +1,10 @@
 import CashRegister from "../models/CashRegister.js";
 import Transaction from "../models/Transaction.js";
 import ResumenCaja from "../models/ResumenCaja.js";
-import { inicioDelDia, finDelDia, fechaActual } from "../config/timezone.js";
+import { inicioDelDia, finDelDia } from "../config/timezone.js";
 import moment from "moment-timezone";
 import PDFDocument from "pdfkit";
+import { auditar } from "../utils/auditar.js";
 
 // 🟦 Abrir Caja del Día
 export const abrirCaja = async (req, res) => {
@@ -36,6 +37,12 @@ export const abrirCaja = async (req, res) => {
             fecha: hoyInicio,
         });
 
+        // Auditoría
+        await auditar(req, "ABRIR_CAJA", {
+            cajaId: nuevaCaja._id,
+            saldoInicial
+        });
+
         res.status(201).json({
             message: "Caja del día abierta exitosamente.",
             caja: nuevaCaja,
@@ -63,7 +70,6 @@ export const cerrarCaja = async (req, res) => {
             return res.status(404).json({ message: "No hay una caja abierta para hoy." });
         }
 
-        // Transacciones del día (solo las de esta caja)
         const transacciones = await Transaction.find({
             caja: caja._id,
             organizacion: req.user.organizacion,
@@ -79,12 +85,10 @@ export const cerrarCaja = async (req, res) => {
 
         const saldoFinal = caja.saldoInicial + totalIngresos - totalEgresos;
 
-        // Marcar como cerrada y guardar saldo final
         caja.abierta = false;
         caja.saldoFinal = saldoFinal;
         await caja.save();
 
-        // 🧾 Crear resumen de caja automáticamente si no existe
         const resumenExistente = await ResumenCaja.findOne({
             fecha: hoyInicio,
             organizacion: req.user.organizacion,
@@ -102,6 +106,15 @@ export const cerrarCaja = async (req, res) => {
             });
         }
 
+        // Auditoría
+        await auditar(req, "CERRAR_CAJA", {
+            cajaId: caja._id,
+            ingresos: totalIngresos,
+            egresos: totalEgresos,
+            saldoInicial: caja.saldoInicial,
+            saldoFinal
+        });
+
         res.status(200).json({
             message: "Caja cerrada exitosamente.",
             caja,
@@ -116,7 +129,6 @@ export const cerrarCaja = async (req, res) => {
         res.status(500).json({ message: "Error del servidor al cerrar caja." });
     }
 };
-
 
 // 📁 Listar historial de cajas cerradas
 export const historialCajas = async (req, res) => {
@@ -197,6 +209,9 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             .populate("profesional", "nombre email")
             .sort({ fecha: -1 });
 
+        // Auditoría
+        await auditar(req, "EXPORTAR_HISTORIAL_PDF", { filtros: req.query });
+
         const doc = new PDFDocument();
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename=historial_cajas.pdf`);
@@ -208,8 +223,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
         if (cajas.length === 0) {
             doc.fontSize(12).text("No se encontraron cajas cerradas con los filtros proporcionados.");
         } else {
-            let totalIngresos = 0;
-            let totalEgresos = 0;
             let totalFinal = 0;
 
             cajas.forEach((caja, i) => {

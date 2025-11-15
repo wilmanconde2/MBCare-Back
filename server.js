@@ -2,7 +2,6 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import connectDB from "./config/db.js";
-
 import patientRoutes from "./routes/patientRoutes.js";
 import organizationRoutes from "./routes/organizationRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
@@ -15,6 +14,7 @@ import reportesRoutes from "./routes/reportesRoutes.js";
 import resumenCajaRoutes from "./routes/resumenCajaRoutes.js";
 import consolidadoMensualRoutes from "./routes/consolidadoMensualRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
+import auditoriaRoutes from "./routes/auditoriaRoutes.js";
 
 // Rutas de auth y usuarios
 import authRoutes from "./routes/authRoutes.js";
@@ -45,6 +45,7 @@ app.use("/api/reportes", reportesRoutes);
 app.use("/api/caja/resumen", resumenCajaRoutes);
 app.use("/api/consolidado", consolidadoMensualRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/auditoria", auditoriaRoutes);
 
 // 🟢 Puerto
 const PORT = process.env.PORT || 5000;
