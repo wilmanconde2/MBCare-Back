@@ -7,38 +7,43 @@ const noteSchema = new mongoose.Schema(
             ref: "Patient",
             required: true,
         },
+
         profesional: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
         },
+
         organizacion: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Organization",
             required: true,
         },
+
         titulo: {
             type: String,
             trim: true,
         },
+
         contenido: {
             type: String,
             required: true,
+            trim: true,
         },
+
         tipoNota: {
             type: String,
             trim: true,
         },
+
         adjuntos: [
             {
-                type: String, // URL (opcional, se enlaza desde el módulo de Adjuntos más adelante)
+                type: String, // URL de archivo
+                trim: true,
             },
         ],
     },
-    {
-        timestamps: true,
-    }
+    { timestamps: true }
 );
 
-const Note = mongoose.model("Note", noteSchema);
-export default Note;
+export default mongoose.model("Note", noteSchema);

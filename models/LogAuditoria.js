@@ -4,12 +4,12 @@ const logSchema = new mongoose.Schema(
     {
         usuario: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "Usuario",
+            ref: "User",             
             required: true,
         },
         organizacion: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "Organizacion",
+            ref: "Organization",     
             required: true,
         },
         accion: {

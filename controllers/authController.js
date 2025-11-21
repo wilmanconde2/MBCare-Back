@@ -5,19 +5,15 @@ import Organization from "../models/Organization.js";
 
 /* =====================================================
    🧩 1️⃣ Registrar Fundador y crear Organización
-   - Solo se permite si NO existe un Fundador
-   - Protegido contra Postman: nadie puede crear otro
 ===================================================== */
 export const registerFundador = async (req, res) => {
   try {
     const { nombre, email, password, industria, nombreOrganizacion } = req.body;
 
-    // Validación
     if (!nombre || !email || !password || !industria || !nombreOrganizacion) {
       return res.status(400).json({ message: "Todos los campos son obligatorios." });
     }
 
-    // 🔒 Solo permitir si no existe Fundador
     const fundadorExiste = await User.findOne({ rol: "Fundador" });
     if (fundadorExiste) {
       return res.status(403).json({
@@ -25,23 +21,19 @@ export const registerFundador = async (req, res) => {
       });
     }
 
-    // No permitir duplicar email
     const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json({ message: "Este email ya está en uso." });
     }
 
-    // Encriptar contraseña
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Crear organización base
     const organizacion = await Organization.create({
       nombre: nombreOrganizacion,
-      industria,
+      industria
     });
 
-    // Crear fundador
     const user = await User.create({
       nombre,
       email,
@@ -49,7 +41,7 @@ export const registerFundador = async (req, res) => {
       rol: "Fundador",
       organizacion: organizacion._id,
       activo: true,
-      debeCambiarPassword: false,
+      debeCambiarPassword: false
     });
 
     organizacion.creadaPor = user._id;
@@ -62,8 +54,8 @@ export const registerFundador = async (req, res) => {
         nombre: user.nombre,
         email: user.email,
         rol: user.rol,
-        organizacion: organizacion.nombre,
-      },
+        organizacion: organizacion.nombre
+      }
     });
   } catch (error) {
     console.error("Error en registerFundador:", error);
@@ -71,10 +63,8 @@ export const registerFundador = async (req, res) => {
   }
 };
 
-
 /* =====================================================
    🔐 2️⃣ Login de usuario
-   - Protección para bloqueos y roles
 ===================================================== */
 export const loginUser = async (req, res) => {
   try {
@@ -85,35 +75,28 @@ export const loginUser = async (req, res) => {
     }
 
     const user = await User.findOne({ email, activo: true });
-
-    if (!user) {
-      return res.status(400).json({ message: "Credenciales inválidas." });
-    }
+    if (!user) return res.status(400).json({ message: "Credenciales inválidas." });
 
     const passMatch = await bcrypt.compare(password, user.password);
-    if (!passMatch) {
-      return res.status(400).json({ message: "Credenciales inválidas." });
-    }
+    if (!passMatch) return res.status(400).json({ message: "Credenciales inválidas." });
 
     const token = jwt.sign(
       {
         id: user._id,
         rol: user.rol,
         email: user.email,
-        organizacion: user.organizacion,
+        organizacion: user.organizacion
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // 🔥 Guardar token en cookie HTTPOnly (IMPORTANTE)
     res.cookie("token", token, {
       httpOnly: true,
-      secure: false,      // en producción será true con HTTPS
+      secure: false,
       sameSite: "lax"
     });
 
-    // 🔥 Respuesta final
     return res.status(200).json({
       message: "Inicio de sesión exitoso.",
       user: {
@@ -121,20 +104,17 @@ export const loginUser = async (req, res) => {
         nombre: user.nombre,
         email: user.email,
         rol: user.rol,
-        organizacion: user.organizacion,
-      },
+        organizacion: user.organizacion
+      }
     });
-
   } catch (error) {
     console.error("Error en loginUser:", error);
     return res.status(500).json({ message: "Error del servidor." });
   }
 };
 
-
 /* =====================================================
    🔑 3️⃣ Cambiar contraseña
-   - Cualquier usuario autenticado puede hacerlo
 ===================================================== */
 export const changePassword = async (req, res) => {
   try {
@@ -143,7 +123,7 @@ export const changePassword = async (req, res) => {
 
     if (!newPassword || newPassword.length < 8) {
       return res.status(400).json({
-        message: "La nueva contraseña debe tener al menos 8 caracteres.",
+        message: "La nueva contraseña debe tener al menos 8 caracteres."
       });
     }
 
@@ -152,7 +132,7 @@ export const changePassword = async (req, res) => {
 
     await User.findByIdAndUpdate(userId, {
       password: hashedPassword,
-      debeCambiarPassword: false,
+      debeCambiarPassword: false
     });
 
     return res.status(200).json({ message: "Contraseña actualizada exitosamente." });
@@ -162,10 +142,9 @@ export const changePassword = async (req, res) => {
   }
 };
 
-
 /* =====================================================
    👤 4️⃣ Obtener perfil del usuario autenticado
-   - Protección contra acceso cruzado entre organizaciones
+   (Refactorizado → quitar logo)
 ===================================================== */
 export const getProfile = async (req, res) => {
   try {
@@ -173,14 +152,13 @@ export const getProfile = async (req, res) => {
       .select("-password")
       .populate({
         path: "organizacion",
-        select: "nombre industria creadaPor",
+        select: "nombre industria creadaPor" // ← logo ELIMINADO
       });
 
     if (!user) {
       return res.status(404).json({ message: "Usuario no encontrado." });
     }
 
-    // 🔒 Protección: un usuario jamás puede ver otro perfil
     if (user._id.toString() !== req.user.id.toString()) {
       return res.status(403).json({ message: "Acceso no autorizado." });
     }
@@ -193,18 +171,25 @@ export const getProfile = async (req, res) => {
 };
 
 /* =====================================================
-   ✅ 5️⃣ Verificar token y mantener sesión
-   - Usado para mantener sesión en frontend 
+   ✅ 5️⃣ Verificar token (Frontend keep alive)
 ===================================================== */
 export const verifyTokenController = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
+    const user = await User.findById(req.user.id)
+      .select("-password")
+      .populate({
+        path: "organizacion",
+        select: "nombre industria" 
+      });
 
-    if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
 
     return res.status(200).json({ user });
   } catch (error) {
-    console.error("Error en verifyToken:", error);
+    console.error("Error en verifyTokenController:", error);
     return res.status(500).json({ message: "Error del servidor" });
   }
 };
+

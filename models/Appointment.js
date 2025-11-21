@@ -7,43 +7,47 @@ const appointmentSchema = new mongoose.Schema(
             ref: "Patient",
             required: true,
         },
+
         profesional: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
         },
+
         fecha: {
             type: Date,
             required: true,
         },
+
         duracion: {
-            type: Number, // duración en minutos
+            type: Number, // minutos
             default: 60,
         },
+
         tipo: {
             type: String,
             enum: ["Presencial", "Virtual"],
             default: "Presencial",
         },
+
         estado: {
             type: String,
             enum: ["Programada", "Cancelada", "Completada"],
             default: "Programada",
         },
+
         notas: {
             type: String,
-            default: "",
+            trim: true,
         },
+
         organizacion: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Organization",
             required: true,
         },
     },
-    {
-        timestamps: true,
-    }
+    { timestamps: true }
 );
 
-const Appointment = mongoose.model("Appointment", appointmentSchema);
-export default Appointment;
+export default mongoose.model("Appointment", appointmentSchema);

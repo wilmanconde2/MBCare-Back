@@ -3,19 +3,22 @@ import User from "../models/User.js";
 
 /**
  * Crear usuario Profesional o Asistente
- * Solo Fundador puede crear (validación fuerte contra Postman)
+ * Solo Fundador puede crear usuarios
  */
 export const crearUsuarioPorRol = async (req, res) => {
     try {
-        // 🔒 Seguridad: solo Fundador
         if (req.user.rol !== "Fundador") {
-            return res.status(403).json({ message: "No tienes permisos para crear usuarios." });
+            return res
+                .status(403)
+                .json({ message: "No tienes permisos para crear usuarios." });
         }
 
         const { nombre, email, rol } = req.body;
 
         if (!nombre || !email || !rol) {
-            return res.status(400).json({ message: "Todos los campos son obligatorios." });
+            return res
+                .status(400)
+                .json({ message: "Todos los campos son obligatorios." });
         }
 
         if (!["Profesional", "Asistente"].includes(rol)) {
@@ -24,7 +27,9 @@ export const crearUsuarioPorRol = async (req, res) => {
 
         const existe = await User.findOne({ email });
         if (existe) {
-            return res.status(400).json({ message: "Este correo ya está registrado." });
+            return res
+                .status(400)
+                .json({ message: "Este correo ya está registrado." });
         }
 
         const tempPassword = Math.random().toString(36).slice(-10);
@@ -50,10 +55,10 @@ export const crearUsuarioPorRol = async (req, res) => {
                 email: nuevoUsuario.email,
                 rol: nuevoUsuario.rol,
                 organizacion: nuevoUsuario.organizacion,
-                temporalPassword: tempPassword // eliminar en producción
-            }
+                temporalPassword: tempPassword, // eliminar en producción
+                // TODO ELIMINAR ESTE CAMPO DESPUÉS DE LAS PRUEBAS
+            },
         });
-
     } catch (error) {
         console.error("Error en crearUsuarioPorRol:", error);
         return res.status(500).json({ message: "Error del servidor." });

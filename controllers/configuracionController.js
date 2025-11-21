@@ -1,10 +1,8 @@
 import Organization from "../models/Organization.js";
-import { subirArchivoFilebase } from "../services/filebaseService.js";
 
 /**
  * GET /api/configuracion
- * Solo Fundador o Asistente pueden ver la configuración
- * Profesional no accede
+ * Solo Fundador o Asistente
  */
 export const obtenerConfiguracion = async (req, res) => {
     try {
@@ -21,20 +19,17 @@ export const obtenerConfiguracion = async (req, res) => {
         res.status(200).json({
             nombre: organizacion.nombre,
             industria: organizacion.industria,
-            logo: organizacion.logo || null,
-            tema: organizacion.tema || "claro",
+            tema: organizacion.tema || "claro"
+            // logo eliminado
         });
     } catch (error) {
-        console.error("Error al obtener configuración:", error);
         res.status(500).json({ message: "Error al obtener datos de configuración." });
     }
 };
 
-
 /**
  * PUT /api/configuracion
- * Solo Fundador puede editar configuración
- * Asistente y Profesional bloqueados incluso desde Postman
+ * Solo Fundador
  */
 export const actualizarConfiguracion = async (req, res) => {
     try {
@@ -49,10 +44,7 @@ export const actualizarConfiguracion = async (req, res) => {
             return res.status(404).json({ message: "Organización no encontrada." });
         }
 
-        if (req.file) {
-            const filebaseFile = await subirArchivoFilebase(req.file);
-            organizacion.logo = filebaseFile.url;
-        }
+        // logo eliminado por completo
 
         if (nombre) organizacion.nombre = nombre;
         if (industria) organizacion.industria = industria;
@@ -65,12 +57,10 @@ export const actualizarConfiguracion = async (req, res) => {
             organizacion: {
                 nombre: organizacion.nombre,
                 industria: organizacion.industria,
-                tema: organizacion.tema,
-                logo: organizacion.logo || null,
-            },
+                tema: organizacion.tema
+            }
         });
     } catch (error) {
-        console.error("Error al actualizar configuración:", error);
         res.status(500).json({ message: "Error al actualizar configuración." });
     }
 };

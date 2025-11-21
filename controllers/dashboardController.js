@@ -1,34 +1,59 @@
 import Transaction from "../models/Transaction.js";
 import CashRegister from "../models/CashRegister.js";
 import ResumenCaja from "../models/ResumenCaja.js";
+import Patient from "../models/Patient.js";
+import Appointment from "../models/Appointment.js";
+import Note from "../models/Note.js";
+
 import moment from "moment-timezone";
 import { inicioDelDia, finDelDia } from "../config/timezone.js";
 import { auditar } from "../utils/auditar.js";
-import { recalcularResumenDiario } from "../utils/recalculoCaja.js";   // ✔ NUEVO
+import { recalcularResumenDiario } from "../utils/recalculoCaja.js";
 
 /**
- * 📊 Obtener métricas generales para el dashboard
- * Fundador + Asistente
- * Profesional NO puede acceder
+ * 📊 Dashboard híbrido (Clínico + Financiero)
+ * Fundador / Asistente → ven todo
+ * Profesional / Lector → ven solo clínico
  */
 export const obtenerDashboard = async (req, res) => {
     try {
-        // Bloqueo interno para Postman/Insomnia
-        if (req.user.rol === "Profesional") {
-            return res.status(403).json({
-                message: "No tienes permisos para acceder al dashboard financiero."
+        const rol = req.user.rol;
+        const organizacionId = req.user.organizacion;
+
+        // ============================
+        // 1️⃣ PARTE CLÍNICA (todos los roles)
+        // ============================
+        const totalPacientes = await Patient.countDocuments({ organizacion: organizacionId });
+        const totalCitas = await Appointment.countDocuments({ organizacion: organizacionId });
+        const totalNotas = await Note.countDocuments({ organizacion: organizacionId });
+
+        const dataClinica = {
+            pacientes: totalPacientes,
+            citas: totalCitas,
+            notas: totalNotas,
+            recordatorios: 0 // hasta que implementes este módulo
+        };
+
+        // ============================
+        // 2️⃣ SI NO ES FUNDADOR / ASISTENTE → SOLO CLÍNICO
+        // ============================
+        if (!["Fundador", "Asistente"].includes(rol)) {
+            return res.status(200).json({
+                clinico: dataClinica,
+                financiero: null
             });
         }
 
+        // ============================
+        // 3️⃣ PARTE FINANCIERA (solo Fundador y Asistente)
+        // ============================
         const hoy = new Date();
         const inicioHoy = inicioDelDia(hoy);
         const finHoy = finDelDia(hoy);
-        const organizacionId = req.user.organizacion;
 
-        // ✔ Recalcular resumen del día antes de mostrar dashboard
+        // Recalcular resumen del día
         await recalcularResumenDiario(inicioHoy, organizacionId);
 
-        // Transacciones del día
         const transaccionesHoy = await Transaction.find({
             createdAt: { $gte: inicioHoy, $lt: finHoy },
             organizacion: organizacionId,
@@ -42,14 +67,17 @@ export const obtenerDashboard = async (req, res) => {
             .filter(t => t.tipo === "Egreso")
             .reduce((acc, t) => acc + t.monto, 0);
 
-        // Total cajas cerradas
         const totalCajasCerradas = await CashRegister.countDocuments({
             organizacion: organizacionId,
             abierta: false,
         });
 
-        // Resumen últimos 7 días (ya recalculado)
-        const hace7dias = moment().tz("America/Bogota").subtract(7, "days").startOf("day").toDate();
+        const hace7dias = moment()
+            .tz("America/Bogota")
+            .subtract(7, "days")
+            .startOf("day")
+            .toDate();
+
         const resumenesSemana = await ResumenCaja.find({
             fecha: { $gte: hace7dias },
             organizacion: organizacionId,
@@ -62,19 +90,30 @@ export const obtenerDashboard = async (req, res) => {
             saldo: r.saldoFinal,
         }));
 
-        // Auditoría
-        await auditar(req, "CONSULTAR_DASHBOARD", {
-            usuario: req.user._id,
-            organizacion: req.user.organizacion
-        });
-
-        res.status(200).json({
+        const dataFinanciera = {
             hoy: {
                 ingresos: totalIngresosHoy,
                 egresos: totalEgresosHoy,
             },
             cajasCerradas: totalCajasCerradas,
-            resumen7dias,
+            resumen7dias
+        };
+
+        // ============================
+        // 4️⃣ AUDITORÍA
+        // ============================
+        await auditar(req, "CONSULTAR_DASHBOARD", {
+            usuario: req.user.id,
+            organizacion: req.user.organizacion
+        });
+
+
+        // ============================
+        // 5️⃣ RESPUESTA FINAL
+        // ============================
+        return res.status(200).json({
+            clinico: dataClinica,
+            financiero: dataFinanciera
         });
 
     } catch (error) {
