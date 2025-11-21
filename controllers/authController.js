@@ -74,18 +74,26 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Email y contraseña son obligatorios." });
     }
 
-    const user = await User.findOne({ email, activo: true });
-    if (!user) return res.status(400).json({ message: "Credenciales inválidas." });
+    let user = await User.findOne({ email, activo: true }).populate({
+      path: "organizacion",
+      select: "nombre industria"
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Credenciales inválidas." });
+    }
 
     const passMatch = await bcrypt.compare(password, user.password);
-    if (!passMatch) return res.status(400).json({ message: "Credenciales inválidas." });
+    if (!passMatch) {
+      return res.status(400).json({ message: "Credenciales inválidas." });
+    }
 
     const token = jwt.sign(
       {
         id: user._id,
         rol: user.rol,
         email: user.email,
-        organizacion: user.organizacion
+        organizacion: user.organizacion?._id,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
@@ -104,14 +112,20 @@ export const loginUser = async (req, res) => {
         nombre: user.nombre,
         email: user.email,
         rol: user.rol,
-        organizacion: user.organizacion
+        organizacion: {
+          id: user.organizacion?._id,
+          nombre: user.organizacion?.nombre,
+          industria: user.organizacion?.industria,
+        }
       }
     });
+
   } catch (error) {
     console.error("Error en loginUser:", error);
     return res.status(500).json({ message: "Error del servidor." });
   }
 };
+
 
 /* =====================================================
    🔑 3️⃣ Cambiar contraseña

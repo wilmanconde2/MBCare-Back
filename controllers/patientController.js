@@ -26,7 +26,7 @@ export const crearPaciente = async (req, res) => {
 
         const nuevoPaciente = new Patient({
             ...req.body,
-            creadoPor: req.user._id,
+            creadoPor: req.user.id,
             organizacion: req.user.organizacion,
         });
 
