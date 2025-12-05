@@ -11,47 +11,51 @@ import { auditar } from "../utils/auditar.js";
 import { recalcularResumenDiario } from "../utils/recalculoCaja.js";
 
 /**
- * 📊 Dashboard híbrido (Clínico + Financiero)
- * Fundador / Asistente → ven todo
- * Profesional / Lector → ven solo clínico
+ * Dashboard híbrido (clínico + financiero)
+ * - Fundador / Asistente: clínico + financiero
+ * - Otros roles: solo clínico
  */
 export const obtenerDashboard = async (req, res) => {
     try {
         const rol = req.user.rol;
         const organizacionId = req.user.organizacion;
 
-        // ============================
-        // 1️⃣ PARTE CLÍNICA (todos los roles)
-        // ============================
-        const totalPacientes = await Patient.countDocuments({ organizacion: organizacionId });
-        const totalCitas = await Appointment.countDocuments({ organizacion: organizacionId });
-        const totalNotas = await Note.countDocuments({ organizacion: organizacionId });
+        // 1) Métricas clínicas (para todos los roles)
+        const totalPacientes = await Patient.countDocuments({
+            organizacion: organizacionId,
+        });
+
+        // Solo citas PROGRAMADAS
+        const totalCitasProgramadas = await Appointment.countDocuments({
+            organizacion: organizacionId,
+            estado: "Programada",
+        });
+
+        const totalNotas = await Note.countDocuments({
+            organizacion: organizacionId,
+        });
 
         const dataClinica = {
             pacientes: totalPacientes,
-            citas: totalCitas,
+            citas: totalCitasProgramadas,
             notas: totalNotas,
-            recordatorios: 0 // hasta que implementes este módulo
+            recordatorios: 0, // pendiente de implementar
         };
 
-        // ============================
-        // 2️⃣ SI NO ES FUNDADOR / ASISTENTE → SOLO CLÍNICO
-        // ============================
+        // 2) Si no es Fundador ni Asistente → solo parte clínica
         if (!["Fundador", "Asistente"].includes(rol)) {
             return res.status(200).json({
                 clinico: dataClinica,
-                financiero: null
+                financiero: null,
             });
         }
 
-        // ============================
-        // 3️⃣ PARTE FINANCIERA (solo Fundador y Asistente)
-        // ============================
+        // 3) Métricas financieras (solo Fundador / Asistente)
         const hoy = new Date();
         const inicioHoy = inicioDelDia(hoy);
         const finHoy = finDelDia(hoy);
 
-        // Recalcular resumen del día
+        // Recalcular resumen del día antes de leer
         await recalcularResumenDiario(inicioHoy, organizacionId);
 
         const transaccionesHoy = await Transaction.find({
@@ -60,11 +64,11 @@ export const obtenerDashboard = async (req, res) => {
         });
 
         const totalIngresosHoy = transaccionesHoy
-            .filter(t => t.tipo === "Ingreso")
+            .filter((t) => t.tipo === "Ingreso")
             .reduce((acc, t) => acc + t.monto, 0);
 
         const totalEgresosHoy = transaccionesHoy
-            .filter(t => t.tipo === "Egreso")
+            .filter((t) => t.tipo === "Egreso")
             .reduce((acc, t) => acc + t.monto, 0);
 
         const totalCajasCerradas = await CashRegister.countDocuments({
@@ -83,7 +87,7 @@ export const obtenerDashboard = async (req, res) => {
             organizacion: organizacionId,
         }).sort({ fecha: 1 });
 
-        const resumen7dias = resumenesSemana.map(r => ({
+        const resumen7dias = resumenesSemana.map((r) => ({
             fecha: r.fecha,
             ingresos: r.ingresosTotales,
             egresos: r.egresosTotales,
@@ -96,28 +100,24 @@ export const obtenerDashboard = async (req, res) => {
                 egresos: totalEgresosHoy,
             },
             cajasCerradas: totalCajasCerradas,
-            resumen7dias
+            resumen7dias,
         };
 
-        // ============================
-        // 4️⃣ AUDITORÍA
-        // ============================
+        // 4) Auditoría de consulta de dashboard
         await auditar(req, "CONSULTAR_DASHBOARD", {
             usuario: req.user.id,
-            organizacion: req.user.organizacion
+            organizacion: organizacionId,
         });
 
-
-        // ============================
-        // 5️⃣ RESPUESTA FINAL
-        // ============================
+        // 5) Respuesta final
         return res.status(200).json({
             clinico: dataClinica,
-            financiero: dataFinanciera
+            financiero: dataFinanciera,
         });
-
     } catch (error) {
         console.error("Error en dashboard:", error);
-        res.status(500).json({ message: "Error al obtener métricas del dashboard." });
+        res
+            .status(500)
+            .json({ message: "Error al obtener métricas del dashboard." });
     }
 };
