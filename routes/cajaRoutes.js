@@ -4,16 +4,19 @@ import {
     cerrarCaja,
     historialCajas,
     exportarHistorialCajaPDF,
-    estadoCajaHoy // ✅ NUEVO
+    estadoCajaHoy
 } from "../controllers/cajaController.js";
 
-import { generarResumen } from "../controllers/resumenCajaController.js";
+import { generarResumen, consultarResumen } from "../controllers/resumenCajaController.js"; 
 import { protect } from "../middlewares/authMiddleware.js";
 import { hasAccess } from "../middlewares/hasAccess.js";
 
 const router = express.Router();
 
-// ✅ Estado de la caja de hoy (abierta / cerrada)
+/* =========================================================
+   ✅ Estado de la caja de hoy (abierta / cerrada)
+   Fundador + Asistente
+========================================================= */
 router.get(
     "/estado-hoy",
     protect,
@@ -37,11 +40,24 @@ router.post(
     cerrarCaja
 );
 
-// Resumen diario: Fundador
+/* =========================================================
+   ✅ Resumen diario por fecha
+   Fundador + Asistente
+   - consultarResumen: devuelve { resumen, caja }
+   - generarResumen: crea resumen si no existe
+========================================================= */
 router.get(
     "/resumen",
     protect,
-    hasAccess(["Fundador"]),
+    hasAccess(["Fundador", "Asistente"]), // ✅ antes solo Fundador
+    consultarResumen
+);
+
+// (Opcional) Endpoint para forzar generación del resumen (si lo quieres conservar)
+router.post(
+    "/resumen/generar",
+    protect,
+    hasAccess(["Fundador", "Asistente"]),
     generarResumen
 );
 

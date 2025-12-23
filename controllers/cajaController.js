@@ -231,9 +231,30 @@ export const historialCajas = async (req, res) => {
             .skip(skip)
             .limit(parseInt(limit));
 
+        // ✅ Recalcular resumen (si aplica) y adjuntar ingresos/egresos desde ResumenCaja
         for (const caja of cajas) {
             await recalcularResumenDiario(caja.fecha, organizacionId);
         }
+
+        const fechasInicioDia = cajas.map((c) => inicioDelDia(c.fecha));
+        const resumenes = await ResumenCaja.find({
+            organizacion: organizacionId,
+            fecha: { $in: fechasInicioDia },
+        });
+
+        const mapResumenPorFecha = new Map(
+            resumenes.map((r) => [new Date(r.fecha).toISOString(), r])
+        );
+
+        const cajasConTotales = cajas.map((c) => {
+            const key = new Date(inicioDelDia(c.fecha)).toISOString();
+            const r = mapResumenPorFecha.get(key);
+
+            const obj = c.toObject();
+            obj.ingresosTotales = r?.ingresosTotales ?? 0;
+            obj.egresosTotales = r?.egresosTotales ?? 0;
+            return obj;
+        });
 
         const total = await CashRegister.countDocuments(filtros);
 
@@ -241,7 +262,7 @@ export const historialCajas = async (req, res) => {
             total,
             paginaActual: parseInt(page),
             totalPaginas: Math.ceil(total / limit),
-            cajas,
+            cajas: cajasConTotales,
         });
     } catch (error) {
         console.error("Error al listar historial de cajas:", error);

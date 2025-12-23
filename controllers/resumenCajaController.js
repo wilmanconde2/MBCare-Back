@@ -26,6 +26,16 @@ export const generarResumen = async (req, res) => {
         const inicioDia = inicioDelDia(fecha);
         const finDia = finDelDia(fecha);
 
+        // Buscar caja del día (por organización)
+        const caja = await CashRegister.findOne({
+            fecha: { $gte: inicioDia, $lte: finDia },
+            organizacion: req.user.organizacion,
+        }).select("_id fecha saldoInicial saldoFinal abierta organizacion profesional");
+
+        if (!caja) {
+            return res.status(404).json({ message: "No se encontró caja para esa fecha." });
+        }
+
         let resumenExistente = await ResumenCaja.findOne({
             fecha: inicioDia,
             organizacion: req.user.organizacion,
@@ -35,16 +45,8 @@ export const generarResumen = async (req, res) => {
             return res.status(200).json({
                 message: "Resumen ya existente.",
                 resumen: resumenExistente,
+                caja,
             });
-        }
-
-        const caja = await CashRegister.findOne({
-            fecha: { $gte: inicioDia, $lte: finDia },
-            organizacion: req.user.organizacion,
-        });
-
-        if (!caja) {
-            return res.status(404).json({ message: "No se encontró caja para esa fecha." });
         }
 
         const saldoInicial = caja.saldoInicial || 0;
@@ -77,18 +79,21 @@ export const generarResumen = async (req, res) => {
         // ✔ Recalcular después de crear
         await recalcularResumenDiario(inicioDia, req.user.organizacion);
 
-        res.status(201).json({
+        return res.status(201).json({
             message: "Resumen generado exitosamente.",
             resumen,
+            caja,
         });
     } catch (error) {
         console.error("Error al generar resumen:", error);
-        res.status(500).json({ message: "Error al generar resumen de caja." });
+        return res.status(500).json({ message: "Error al generar resumen de caja." });
     }
 };
 
 /* ========================================================================
    📋 Consultar resumen diario por fecha
+   - Devuelve también el estado de la caja (abierta/cerrada)
+   - Si no existe resumen aún, calcula uno en memoria para renderizar UI
 ========================================================================= */
 export const consultarResumen = async (req, res) => {
     try {
@@ -104,23 +109,57 @@ export const consultarResumen = async (req, res) => {
         }
 
         const inicioDia = inicioDelDia(fecha);
+        const finDia = finDelDia(fecha);
 
-        // ✔ Siempre recalcula antes de devolver
+        // Buscar caja del día (por organización)
+        const caja = await CashRegister.findOne({
+            fecha: { $gte: inicioDia, $lte: finDia },
+            organizacion: req.user.organizacion,
+        }).select("_id fecha saldoInicial saldoFinal abierta organizacion profesional");
+
+        if (!caja) {
+            return res.status(404).json({ message: "No se encontró caja para esa fecha." });
+        }
+
+        // ✔ Intentar recalcular antes de devolver (si tu util crea/actualiza)
         await recalcularResumenDiario(inicioDia, req.user.organizacion);
 
-        const resumen = await ResumenCaja.findOne({
+        let resumen = await ResumenCaja.findOne({
             fecha: inicioDia,
             organizacion: req.user.organizacion,
         });
 
+        // Si todavía no existe resumen, lo calculamos en memoria (sin guardar)
         if (!resumen) {
-            return res.status(404).json({ message: "No se encontró resumen para esa fecha." });
+            const transacciones = await Transaction.find({
+                createdAt: { $gte: inicioDia, $lte: finDia },
+                organizacion: req.user.organizacion,
+            });
+
+            const ingresosTotales = transacciones
+                .filter(t => t.tipo === "Ingreso")
+                .reduce((sum, t) => sum + t.monto, 0);
+
+            const egresosTotales = transacciones
+                .filter(t => t.tipo === "Egreso")
+                .reduce((sum, t) => sum + t.monto, 0);
+
+            const saldoInicial = caja.saldoInicial || 0;
+            const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
+
+            resumen = {
+                fecha: inicioDia,
+                organizacion: req.user.organizacion,
+                ingresosTotales,
+                egresosTotales,
+                saldoInicial,
+                saldoFinal,
+            };
         }
 
-        res.status(200).json({ resumen });
-
+        return res.status(200).json({ resumen, caja });
     } catch (error) {
         console.error("Error al consultar resumen:", error);
-        res.status(500).json({ message: "Error al consultar resumen de caja." });
+        return res.status(500).json({ message: "Error al consultar resumen de caja." });
     }
 };
