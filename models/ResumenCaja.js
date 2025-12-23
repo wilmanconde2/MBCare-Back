@@ -32,7 +32,8 @@ const resumenCajaSchema = new mongoose.Schema(
         creadoPor: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true,
+            required: false,
+            default: null,
         },
 
         // 🆕 NUEVO: Marca cuándo se recalculó este resumen

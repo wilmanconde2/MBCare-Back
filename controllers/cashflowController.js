@@ -3,19 +3,30 @@ import CashRegister from "../models/CashRegister.js";
 import { inicioDelDia, finDelDia } from "../config/timezone.js";
 import {
     recalcularResumenDiario,
-    recalcularConsolidadoMensual
+    recalcularConsolidadoMensual,
 } from "../utils/recalculoCaja.js";
 
 /**
  * ➕ Crear ingreso o egreso
- * Fundador / Asistente → permitido
+ * Fundador / Asistente
  */
 export const crearTransaccion = async (req, res) => {
     try {
-        const { tipo, descripcion, monto, metodoPago } = req.body;
+        const { tipo, descripcion, monto, metodoPago, categoria, paciente } = req.body;
+
+        const userId = req.user?._id || req.user?.id;
+        const orgId = req.user?.organizacion;
+
+        if (!userId) {
+            return res.status(401).json({ message: "Usuario no autenticado." });
+        }
+
+        if (!orgId) {
+            return res.status(400).json({ message: "Organización no encontrada en el token." });
+        }
 
         if (!tipo || !descripcion || monto === undefined) {
-            return res.status(400).json({ message: "Todos los campos son obligatorios." });
+            return res.status(400).json({ message: "Tipo, descripción y monto son obligatorios." });
         }
 
         if (!["Ingreso", "Egreso"].includes(tipo)) {
@@ -27,7 +38,7 @@ export const crearTransaccion = async (req, res) => {
 
         const caja = await CashRegister.findOne({
             fecha: { $gte: hoyInicio, $lte: hoyFin },
-            organizacion: req.user.organizacion,
+            organizacion: orgId,
             abierta: true,
         });
 
@@ -40,15 +51,24 @@ export const crearTransaccion = async (req, res) => {
             descripcion,
             monto,
             metodoPago,
+            categoria: categoria || null,
+            paciente: paciente || null,
             caja: caja._id,
-            profesional: req.user._id,
-            organizacion: req.user.organizacion,
+            profesional: userId,
+            organizacion: orgId,
         });
 
-        res.status(201).json({ message: "Transacción registrada exitosamente.", transaccion });
+        // Recalcular para que el resumen/dash quede actualizado
+        await recalcularResumenDiario(hoyInicio, orgId);
+        await recalcularConsolidadoMensual(hoyInicio, orgId);
+
+        return res.status(201).json({
+            message: "Transacción registrada exitosamente.",
+            transaccion,
+        });
     } catch (error) {
         console.error("Error al crear transacción:", error);
-        res.status(500).json({ message: "Error del servidor." });
+        return res.status(500).json({ message: "Error del servidor." });
     }
 };
 
@@ -62,12 +82,14 @@ export const listarPorCaja = async (req, res) => {
         const transacciones = await Transaction.find({
             caja: cajaId,
             organizacion: req.user.organizacion,
-        }).sort({ createdAt: -1 });
+        })
+            .populate("paciente", "nombreCompleto numeroDocumento")
+            .sort({ createdAt: -1 });
 
-        res.status(200).json({ transacciones });
+        return res.status(200).json({ transacciones });
     } catch (error) {
         console.error("Error al listar transacciones:", error);
-        res.status(500).json({ message: "Error del servidor." });
+        return res.status(500).json({ message: "Error del servidor." });
     }
 };
 
@@ -88,18 +110,20 @@ export const listarPorFecha = async (req, res) => {
         const transacciones = await Transaction.find({
             createdAt: { $gte: inicio, $lte: fin },
             organizacion: req.user.organizacion,
-        }).sort({ createdAt: -1 });
+        })
+            .populate("paciente", "nombreCompleto numeroDocumento")
+            .sort({ createdAt: -1 });
 
-        res.status(200).json({ transacciones });
+        return res.status(200).json({ transacciones });
     } catch (error) {
         console.error("Error al filtrar transacciones por fecha:", error);
-        res.status(500).json({ message: "Error del servidor." });
+        return res.status(500).json({ message: "Error del servidor." });
     }
 };
 
 /**
  * 📝 Editar una transacción
- * SOLO Fundador puede editar
+ * Solo Fundador
  */
 export const editarTransaccion = async (req, res) => {
     try {
@@ -108,34 +132,39 @@ export const editarTransaccion = async (req, res) => {
         }
 
         const { id } = req.params;
-        const { descripcion, monto, metodoPago } = req.body;
+        const { descripcion, monto, metodoPago, categoria, paciente } = req.body;
 
         const transaccion = await Transaction.findById(id);
+
         if (!transaccion || transaccion.organizacion.toString() !== req.user.organizacion.toString()) {
             return res.status(404).json({ message: "Transacción no encontrada." });
         }
 
-        transaccion.descripcion = descripcion || transaccion.descripcion;
-        transaccion.monto = monto !== undefined ? monto : transaccion.monto;
-        transaccion.metodoPago = metodoPago || transaccion.metodoPago;
+        if (descripcion !== undefined) transaccion.descripcion = descripcion;
+        if (monto !== undefined) transaccion.monto = monto;
+        if (metodoPago !== undefined) transaccion.metodoPago = metodoPago;
+        if (categoria !== undefined) transaccion.categoria = categoria;
+        if (paciente !== undefined) transaccion.paciente = paciente || null;
 
         await transaccion.save();
 
-        // 🔥 RE-CÁLCULO AUTOMÁTICO
         const fecha = transaccion.createdAt;
         await recalcularResumenDiario(fecha, req.user.organizacion);
         await recalcularConsolidadoMensual(fecha, req.user.organizacion);
 
-        res.status(200).json({ message: "Transacción actualizada exitosamente.", transaccion });
+        return res.status(200).json({
+            message: "Transacción actualizada exitosamente.",
+            transaccion,
+        });
     } catch (error) {
         console.error("Error al editar transacción:", error);
-        res.status(500).json({ message: "Error del servidor." });
+        return res.status(500).json({ message: "Error del servidor." });
     }
 };
 
 /**
  * 🗑️ Eliminar una transacción
- * SOLO Fundador puede eliminar
+ * Solo Fundador
  */
 export const eliminarTransaccion = async (req, res) => {
     try {
@@ -154,13 +183,12 @@ export const eliminarTransaccion = async (req, res) => {
 
         await transaccion.deleteOne();
 
-        // 🔥 RE-CÁLCULO AUTOMÁTICO
         await recalcularResumenDiario(fecha, req.user.organizacion);
         await recalcularConsolidadoMensual(fecha, req.user.organizacion);
 
-        res.status(200).json({ message: "Transacción eliminada exitosamente." });
+        return res.status(200).json({ message: "Transacción eliminada exitosamente." });
     } catch (error) {
         console.error("Error al eliminar transacción:", error);
-        res.status(500).json({ message: "Error del servidor." });
+        return res.status(500).json({ message: "Error del servidor." });
     }
 };

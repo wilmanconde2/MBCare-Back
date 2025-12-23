@@ -5,17 +5,63 @@ import { inicioDelDia, finDelDia } from "../config/timezone.js";
 import moment from "moment-timezone";
 import PDFDocument from "pdfkit";
 import { auditar } from "../utils/auditar.js";
-import { recalcularResumenDiario } from "../utils/recalculoCaja.js";   // ✔ NUEVO
+import { recalcularResumenDiario } from "../utils/recalculoCaja.js";
 
 /**
- * 🟦 Abrir Caja del Día
+ * ✅ NUEVO: Estado de la caja de HOY (abierta/cerrada + caja)
+ * Fundador / Asistente (mismos permisos que historial, ajustable)
+ */
+export const estadoCajaHoy = async (req, res) => {
+    try {
+        const profesionalId = req.user?._id || req.user?.id;
+        if (!profesionalId) {
+            return res.status(500).json({ message: "No se pudo determinar el profesional." });
+        }
+
+        const hoyInicio = inicioDelDia();
+        const hoyFin = finDelDia();
+
+        // Buscamos caja de hoy (abierta o cerrada). Priorizamos la abierta si existe.
+        let caja = await CashRegister.findOne({
+            fecha: { $gte: hoyInicio, $lte: hoyFin },
+            organizacion: req.user.organizacion,
+            abierta: true,
+        });
+
+        if (!caja) {
+            caja = await CashRegister.findOne({
+                fecha: { $gte: hoyInicio, $lte: hoyFin },
+                organizacion: req.user.organizacion,
+            }).sort({ createdAt: -1 });
+        }
+
+        return res.status(200).json({
+            abierta: !!caja?.abierta,
+            caja: caja || null,
+        });
+    } catch (error) {
+        console.error("Error al obtener estado de caja:", error);
+        return res.status(500).json({ message: "Error del servidor al obtener estado de caja." });
+    }
+};
+
+/**
+ * Abrir caja del día
  */
 export const abrirCaja = async (req, res) => {
     try {
         const { saldoInicial } = req.body;
 
         if (typeof saldoInicial !== "number" || saldoInicial < 0) {
-            return res.status(400).json({ message: "El valor de apertura es requerido y debe ser válido." });
+            return res.status(400).json({
+                message: "El valor de apertura es requerido y debe ser válido.",
+            });
+        }
+
+        const profesionalId = req.user?._id || req.user?.id;
+        if (!profesionalId) {
+            console.error("abrirCaja: usuario sin id válido", req.user);
+            return res.status(500).json({ message: "No se pudo determinar el profesional." });
         }
 
         const hoyInicio = inicioDelDia();
@@ -23,7 +69,7 @@ export const abrirCaja = async (req, res) => {
 
         const existeCajaHoy = await CashRegister.findOne({
             fecha: { $gte: hoyInicio, $lte: hoyFin },
-            profesional: req.user._id,
+            profesional: profesionalId,
             organizacion: req.user.organizacion,
             abierta: true,
         });
@@ -34,7 +80,7 @@ export const abrirCaja = async (req, res) => {
 
         const nuevaCaja = await CashRegister.create({
             saldoInicial,
-            profesional: req.user._id,
+            profesional: profesionalId,
             organizacion: req.user.organizacion,
             abierta: true,
             fecha: hoyInicio,
@@ -42,31 +88,36 @@ export const abrirCaja = async (req, res) => {
 
         await auditar(req, "ABRIR_CAJA", {
             cajaId: nuevaCaja._id,
-            saldoInicial
+            saldoInicial,
         });
 
-        res.status(201).json({
+        return res.status(201).json({
             message: "Caja del día abierta exitosamente.",
             caja: nuevaCaja,
         });
     } catch (error) {
         console.error("Error al abrir caja:", error);
-        res.status(500).json({ message: "Error del servidor al abrir caja." });
+        return res.status(500).json({ message: "Error del servidor al abrir caja." });
     }
 };
 
-
 /**
- * 🔒 Cerrar Caja del Día
+ * Cerrar caja del día
  */
 export const cerrarCaja = async (req, res) => {
     try {
+        const profesionalId = req.user?._id || req.user?.id;
+        if (!profesionalId) {
+            console.error("cerrarCaja: usuario sin id válido", req.user);
+            return res.status(500).json({ message: "No se pudo determinar el profesional." });
+        }
+
         const hoyInicio = inicioDelDia();
         const hoyFin = finDelDia();
 
         const caja = await CashRegister.findOne({
             fecha: { $gte: hoyInicio, $lte: hoyFin },
-            profesional: req.user._id,
+            profesional: profesionalId,
             organizacion: req.user.organizacion,
             abierta: true,
         });
@@ -81,11 +132,11 @@ export const cerrarCaja = async (req, res) => {
         });
 
         const totalIngresos = transacciones
-            .filter(t => t.tipo === "Ingreso")
+            .filter((t) => t.tipo === "Ingreso")
             .reduce((acc, t) => acc + t.monto, 0);
 
         const totalEgresos = transacciones
-            .filter(t => t.tipo === "Egreso")
+            .filter((t) => t.tipo === "Egreso")
             .reduce((acc, t) => acc + t.monto, 0);
 
         const saldoFinal = caja.saldoInicial + totalIngresos - totalEgresos;
@@ -107,7 +158,7 @@ export const cerrarCaja = async (req, res) => {
                 egresosTotales: totalEgresos,
                 saldoInicial: caja.saldoInicial,
                 saldoFinal,
-                creadoPor: req.user._id,
+                creadoPor: profesionalId,
             });
         }
 
@@ -116,13 +167,12 @@ export const cerrarCaja = async (req, res) => {
             ingresos: totalIngresos,
             egresos: totalEgresos,
             saldoInicial: caja.saldoInicial,
-            saldoFinal
+            saldoFinal,
         });
 
-        // ✔ Recalcula resumen del día después de cerrar la caja
         await recalcularResumenDiario(hoyInicio, req.user.organizacion);
 
-        res.status(200).json({
+        return res.status(200).json({
             message: "Caja cerrada exitosamente.",
             caja,
             resumen: {
@@ -133,18 +183,19 @@ export const cerrarCaja = async (req, res) => {
         });
     } catch (error) {
         console.error("Error al cerrar caja:", error);
-        res.status(500).json({ message: "Error del servidor al cerrar caja." });
+        return res.status(500).json({ message: "Error del servidor al cerrar caja." });
     }
 };
 
-
 /**
- * 📁 Listar historial de cajas cerradas
+ * Historial de cajas cerradas
  */
 export const historialCajas = async (req, res) => {
     try {
         if (req.user.rol === "Profesional") {
-            return res.status(403).json({ message: "No tienes permisos para acceder al historial de caja." });
+            return res.status(403).json({
+                message: "No tienes permisos para acceder al historial de caja.",
+            });
         }
 
         const organizacionId = req.user.organizacion;
@@ -180,14 +231,13 @@ export const historialCajas = async (req, res) => {
             .skip(skip)
             .limit(parseInt(limit));
 
-        /* ✔ NUEVO: Recalcular cada fecha antes de mostrar */
         for (const caja of cajas) {
             await recalcularResumenDiario(caja.fecha, organizacionId);
         }
 
         const total = await CashRegister.countDocuments(filtros);
 
-        res.status(200).json({
+        return res.status(200).json({
             total,
             paginaActual: parseInt(page),
             totalPaginas: Math.ceil(total / limit),
@@ -195,18 +245,21 @@ export const historialCajas = async (req, res) => {
         });
     } catch (error) {
         console.error("Error al listar historial de cajas:", error);
-        res.status(500).json({ message: "Error al obtener historial de cajas." });
+        return res.status(500).json({
+            message: "Error al obtener historial de cajas.",
+        });
     }
 };
 
-
 /**
- * 📤 Exportar historial en PDF
+ * Exportar historial de cajas en PDF
  */
 export const exportarHistorialCajaPDF = async (req, res) => {
     try {
         if (req.user.rol !== "Fundador") {
-            return res.status(403).json({ message: "No tienes permisos para exportar historial de caja." });
+            return res.status(403).json({
+                message: "No tienes permisos para exportar historial de caja.",
+            });
         }
 
         const { desde, hasta, profesionalId, mes } = req.query;
@@ -235,7 +288,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             .populate("profesional", "nombre email")
             .sort({ fecha: -1 });
 
-        /* ✔ NUEVO: recalcular antes de exportar */
         for (const caja of cajas) {
             await recalcularResumenDiario(caja.fecha, req.user.organizacion);
         }
@@ -244,7 +296,7 @@ export const exportarHistorialCajaPDF = async (req, res) => {
 
         const doc = new PDFDocument();
         res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `attachment; filename=historial_cajas.pdf`);
+        res.setHeader("Content-Disposition", "attachment; filename=historial_cajas.pdf");
         doc.pipe(res);
 
         doc.fontSize(18).text("Historial Cuadre Diario - MBCare", { align: "center" });
@@ -274,6 +326,8 @@ export const exportarHistorialCajaPDF = async (req, res) => {
         doc.end();
     } catch (error) {
         console.error("Error al exportar historial de cajas:", error);
-        res.status(500).json({ message: "Error al generar PDF del historial de cajas." });
+        return res.status(500).json({
+            message: "Error al generar PDF del historial de cajas.",
+        });
     }
 };

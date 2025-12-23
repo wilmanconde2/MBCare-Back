@@ -44,8 +44,6 @@ export const actualizarConfiguracion = async (req, res) => {
             return res.status(404).json({ message: "Organización no encontrada." });
         }
 
-        // logo eliminado por completo
-
         if (nombre) organizacion.nombre = nombre;
         if (industria) organizacion.industria = industria;
         if (tema) organizacion.tema = tema;
