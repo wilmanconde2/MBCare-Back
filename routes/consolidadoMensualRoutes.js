@@ -1,7 +1,7 @@
 import express from "express";
 import {
     generarResumenMensual,
-    exportarResumenMensualPDF
+    exportarResumenMensualPDF,
 } from "../controllers/consolidadoMensualController.js";
 import { protect } from "../middlewares/authMiddleware.js";
 import { hasAccess } from "../middlewares/hasAccess.js";

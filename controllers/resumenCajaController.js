@@ -14,7 +14,7 @@ export const generarResumen = async (req, res) => {
     try {
         if (req.user.rol === "Profesional") {
             return res.status(403).json({
-                message: "No tienes permisos para generar resúmenes de caja."
+                message: "No tienes permisos para generar resúmenes de caja.",
             });
         }
 
@@ -23,8 +23,9 @@ export const generarResumen = async (req, res) => {
             return res.status(400).json({ message: "La fecha es obligatoria." });
         }
 
+        // ✅ IDEAL: una sola regla para fechas
         const inicioDia = inicioDelDia(fecha);
-        const finDia = finDelDia(fecha);
+        const finDia = finDelDia(inicioDia);
 
         // Buscar caja del día (por organización)
         const caja = await CashRegister.findOne({
@@ -49,7 +50,7 @@ export const generarResumen = async (req, res) => {
             });
         }
 
-        const saldoInicial = caja.saldoInicial || 0;
+        const saldoInicial = Number(caja.saldoInicial) || 0;
 
         const transacciones = await Transaction.find({
             createdAt: { $gte: inicioDia, $lte: finDia },
@@ -57,12 +58,12 @@ export const generarResumen = async (req, res) => {
         });
 
         const ingresosTotales = transacciones
-            .filter(t => t.tipo === "Ingreso")
-            .reduce((sum, t) => sum + t.monto, 0);
+            .filter((t) => t.tipo === "Ingreso")
+            .reduce((sum, t) => sum + (Number(t.monto) || 0), 0);
 
         const egresosTotales = transacciones
-            .filter(t => t.tipo === "Egreso")
-            .reduce((sum, t) => sum + t.monto, 0);
+            .filter((t) => t.tipo === "Egreso")
+            .reduce((sum, t) => sum + (Number(t.monto) || 0), 0);
 
         const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
 
@@ -99,7 +100,7 @@ export const consultarResumen = async (req, res) => {
     try {
         if (req.user.rol === "Profesional") {
             return res.status(403).json({
-                message: "No tienes permisos para consultar resúmenes de caja."
+                message: "No tienes permisos para consultar resúmenes de caja.",
             });
         }
 
@@ -108,8 +109,9 @@ export const consultarResumen = async (req, res) => {
             return res.status(400).json({ message: "La fecha es obligatoria." });
         }
 
+        // ✅ IDEAL: una sola regla para fechas
         const inicioDia = inicioDelDia(fecha);
-        const finDia = finDelDia(fecha);
+        const finDia = finDelDia(inicioDia);
 
         // Buscar caja del día (por organización)
         const caja = await CashRegister.findOne({
@@ -121,7 +123,7 @@ export const consultarResumen = async (req, res) => {
             return res.status(404).json({ message: "No se encontró caja para esa fecha." });
         }
 
-        // ✔ Intentar recalcular antes de devolver (si tu util crea/actualiza)
+        // ✔ Punto 2 NO va: se mantiene recalculo siempre
         await recalcularResumenDiario(inicioDia, req.user.organizacion);
 
         let resumen = await ResumenCaja.findOne({
@@ -137,14 +139,14 @@ export const consultarResumen = async (req, res) => {
             });
 
             const ingresosTotales = transacciones
-                .filter(t => t.tipo === "Ingreso")
-                .reduce((sum, t) => sum + t.monto, 0);
+                .filter((t) => t.tipo === "Ingreso")
+                .reduce((sum, t) => sum + (Number(t.monto) || 0), 0);
 
             const egresosTotales = transacciones
-                .filter(t => t.tipo === "Egreso")
-                .reduce((sum, t) => sum + t.monto, 0);
+                .filter((t) => t.tipo === "Egreso")
+                .reduce((sum, t) => sum + (Number(t.monto) || 0), 0);
 
-            const saldoInicial = caja.saldoInicial || 0;
+            const saldoInicial = Number(caja.saldoInicial) || 0;
             const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
 
             resumen = {

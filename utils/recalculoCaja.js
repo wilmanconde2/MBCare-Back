@@ -5,10 +5,13 @@ import CashRegister from "../models/CashRegister.js";
 import moment from "moment-timezone";
 import { inicioDelDia, finDelDia } from "../config/timezone.js";
 
-/* Normalizar fecha */
-const normalizarFecha = (fecha) => {
-    return inicioDelDia(moment(fecha).tz("America/Bogota").format("YYYY-MM-DD"));
-};
+const TZ = "America/Bogota";
+
+/**
+ * ✅ Normalizar fecha (IDEAL):
+ * Toda la app usa inicioDelDia(fecha) como única fuente de verdad.
+ */
+const normalizarFecha = (fecha) => inicioDelDia(fecha);
 
 /* ============================================================================
    🔄 RE-CÁLCULO DE RESUMEN DIARIO
@@ -20,25 +23,25 @@ export const recalcularResumenDiario = async (fecha, organizacionId) => {
 
         const caja = await CashRegister.findOne({
             fecha: { $gte: fechaInicio, $lte: fechaFin },
-            organizacion: organizacionId
+            organizacion: organizacionId,
         });
 
         if (!caja) return null;
 
         const transacciones = await Transaction.find({
             createdAt: { $gte: fechaInicio, $lte: fechaFin },
-            organizacion: organizacionId
+            organizacion: organizacionId,
         });
 
         const ingresosTotales = transacciones
-            .filter(t => t.tipo === "Ingreso")
-            .reduce((a, t) => a + t.monto, 0);
+            .filter((t) => t.tipo === "Ingreso")
+            .reduce((a, t) => a + (Number(t.monto) || 0), 0);
 
         const egresosTotales = transacciones
-            .filter(t => t.tipo === "Egreso")
-            .reduce((a, t) => a + t.monto, 0);
+            .filter((t) => t.tipo === "Egreso")
+            .reduce((a, t) => a + (Number(t.monto) || 0), 0);
 
-        const saldoInicial = caja.saldoInicial;
+        const saldoInicial = Number(caja.saldoInicial) || 0;
         const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
 
         caja.saldoFinal = saldoFinal;
@@ -46,7 +49,7 @@ export const recalcularResumenDiario = async (fecha, organizacionId) => {
 
         let resumen = await ResumenCaja.findOne({
             fecha: fechaInicio,
-            organizacion: organizacionId
+            organizacion: organizacionId,
         });
 
         if (resumen) {
@@ -62,12 +65,11 @@ export const recalcularResumenDiario = async (fecha, organizacionId) => {
                 ingresosTotales,
                 egresosTotales,
                 saldoInicial,
-                saldoFinal
+                saldoFinal,
             });
         }
 
         return resumen;
-
     } catch (err) {
         console.error("Error en recalcularResumenDiario:", err);
         return null;
@@ -79,7 +81,10 @@ export const recalcularResumenDiario = async (fecha, organizacionId) => {
 ============================================================================ */
 export const recalcularConsolidadoMensual = async (fecha, organizacionId) => {
     try {
-        const f = moment(fecha).tz("America/Bogota");
+        // ✅ Normalizamos antes de calcular el mes, para evitar “cortes” por hora/zona
+        const fechaClave = normalizarFecha(fecha);
+
+        const f = moment(fechaClave).tz(TZ);
         const anio = f.year();
         const mes = f.month() + 1;
 
@@ -88,18 +93,25 @@ export const recalcularConsolidadoMensual = async (fecha, organizacionId) => {
 
         const resumenes = await ResumenCaja.find({
             fecha: { $gte: inicioMes, $lte: finMes },
-            organizacion: organizacionId
-        });
+            organizacion: organizacionId,
+        }).sort({ fecha: 1 });
 
-        const ingresosTotales = resumenes.reduce((a, r) => a + r.ingresosTotales, 0);
-        const egresosTotales = resumenes.reduce((a, r) => a + r.egresosTotales, 0);
-        const saldoInicial = resumenes.length > 0 ? resumenes[0].saldoInicial : 0;
+        const ingresosTotales = resumenes.reduce(
+            (a, r) => a + (Number(r.ingresosTotales) || 0),
+            0
+        );
+        const egresosTotales = resumenes.reduce(
+            (a, r) => a + (Number(r.egresosTotales) || 0),
+            0
+        );
+
+        const saldoInicial = resumenes.length > 0 ? (Number(resumenes[0].saldoInicial) || 0) : 0;
         const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
 
         let consolidado = await ConsolidadoMensual.findOne({
             mes,
             anio,
-            organizacion: organizacionId
+            organizacion: organizacionId,
         });
 
         if (consolidado) {
@@ -116,14 +128,38 @@ export const recalcularConsolidadoMensual = async (fecha, organizacionId) => {
                 ingresosTotales,
                 egresosTotales,
                 saldoInicial,
-                saldoFinal
+                saldoFinal,
             });
         }
 
         return consolidado;
-
     } catch (err) {
         console.error("Error en recalcularConsolidadoMensual:", err);
         return null;
     }
+};
+
+/* ============================================================================
+   ✅ Helper: recalcular todo (diario + mensual)
+   - Útil para crear/editar/eliminar transacciones, y para cerrar caja
+============================================================================ */
+export const recalcularTodo = async (fecha, organizacionId) => {
+    const fechaClave = normalizarFecha(fecha);
+
+    let resumen = null;
+    let consolidado = null;
+
+    try {
+        resumen = await recalcularResumenDiario(fechaClave, organizacionId);
+    } catch (e) {
+        console.error("Error en recalcularTodo -> recalcularResumenDiario:", e);
+    }
+
+    try {
+        consolidado = await recalcularConsolidadoMensual(fechaClave, organizacionId);
+    } catch (e) {
+        console.error("Error en recalcularTodo -> recalcularConsolidadoMensual:", e);
+    }
+
+    return { fechaClave, resumen, consolidado };
 };

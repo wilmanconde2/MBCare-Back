@@ -16,35 +16,15 @@ const router = express.Router();
 router.post("/crear", protect, hasAccess(["Fundador", "Asistente"]), crearTransaccion);
 
 // Listar transacciones por caja: Fundador + Asistente
-router.get(
-    "/transacciones/caja/:cajaId",
-    protect,
-    hasAccess(["Fundador", "Asistente"]),
-    listarPorCaja
-);
+router.get("/transacciones/caja/:cajaId", protect, hasAccess(["Fundador", "Asistente"]), listarPorCaja);
 
 // Listar por fecha: Fundador + Asistente
-router.get(
-    "/transacciones/fecha",
-    protect,
-    hasAccess(["Fundador", "Asistente"]),
-    listarPorFecha
-);
+router.get("/transacciones/fecha", protect, hasAccess(["Fundador", "Asistente"]), listarPorFecha);
 
 // Editar transacción: SOLO Fundador
-router.put(
-    "/transaccion/:id",
-    protect,
-    hasAccess(["Fundador"]),
-    editarTransaccion
-);
+router.put("/transaccion/:id", protect, hasAccess(["Fundador"]), editarTransaccion);
 
 // Eliminar transacción: SOLO Fundador
-router.delete(
-    "/transaccion/:id",
-    protect,
-    hasAccess(["Fundador"]),
-    eliminarTransaccion
-);
+router.delete("/transaccion/:id", protect, hasAccess(["Fundador"]), eliminarTransaccion);
 
 export default router;

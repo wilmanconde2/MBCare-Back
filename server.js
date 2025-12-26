@@ -13,7 +13,6 @@ import configuracionRoutes from "./routes/configuracionRoutes.js";
 import cajaRoutes from "./routes/cajaRoutes.js";
 import cashflowRoutes from "./routes/cashflowRoutes.js";
 import reportesRoutes from "./routes/reportesRoutes.js";
-import resumenCajaRoutes from "./routes/resumenCajaRoutes.js";
 import consolidadoMensualRoutes from "./routes/consolidadoMensualRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import auditoriaRoutes from "./routes/auditoriaRoutes.js";
@@ -34,12 +33,14 @@ app.use(express.json());
 app.use(cookieParser());
 
 // CORS CONFIGURADO CORRECTAMENTE PARA REACT
-app.use(cors({
-    origin: "http://localhost:5173",
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-}));
+app.use(
+    cors({
+        origin: "http://localhost:5173",
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+    })
+);
 
 // RUTAS DEL API
 app.use("/api/auth", authRoutes);
@@ -53,7 +54,6 @@ app.use("/api/configuracion", configuracionRoutes);
 app.use("/api/caja", cajaRoutes);
 app.use("/api/caja/flujo", cashflowRoutes);
 app.use("/api/reportes", reportesRoutes);
-app.use("/api/caja/resumen", resumenCajaRoutes);
 app.use("/api/consolidado", consolidadoMensualRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/auditoria", auditoriaRoutes);

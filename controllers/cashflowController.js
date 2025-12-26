@@ -1,14 +1,15 @@
 import Transaction from "../models/Transaction.js";
 import CashRegister from "../models/CashRegister.js";
 import { inicioDelDia, finDelDia } from "../config/timezone.js";
-import {
-    recalcularResumenDiario,
-    recalcularConsolidadoMensual,
-} from "../utils/recalculoCaja.js";
+import { recalcularResumenDiario } from "../utils/recalculoCaja.js";
 
 /**
  * ➕ Crear ingreso o egreso
  * Fundador / Asistente
+ *
+ * Regla del sistema:
+ * - Al crear/editar/eliminar: recalcular SOLO diario (ResumenCaja + saldoFinal de caja).
+ * - Mensual: SOLO al cerrar caja (cajaController).
  */
 export const crearTransaccion = async (req, res) => {
     try {
@@ -33,8 +34,13 @@ export const crearTransaccion = async (req, res) => {
             return res.status(400).json({ message: "Tipo inválido." });
         }
 
+        const montoNum = Number(monto);
+        if (!Number.isFinite(montoNum) || montoNum < 0) {
+            return res.status(400).json({ message: "Monto inválido." });
+        }
+
         const hoyInicio = inicioDelDia();
-        const hoyFin = finDelDia();
+        const hoyFin = finDelDia(hoyInicio);
 
         const caja = await CashRegister.findOne({
             fecha: { $gte: hoyInicio, $lte: hoyFin },
@@ -49,7 +55,7 @@ export const crearTransaccion = async (req, res) => {
         const transaccion = await Transaction.create({
             tipo,
             descripcion,
-            monto,
+            monto: montoNum,
             metodoPago,
             categoria: categoria || null,
             paciente: paciente || null,
@@ -58,9 +64,12 @@ export const crearTransaccion = async (req, res) => {
             organizacion: orgId,
         });
 
-        // Recalcular para que el resumen/dash quede actualizado
-        await recalcularResumenDiario(hoyInicio, orgId);
-        await recalcularConsolidadoMensual(hoyInicio, orgId);
+        // ✅ Recalcular SOLO diario (mensual NO aquí)
+        try {
+            await recalcularResumenDiario(hoyInicio, orgId);
+        } catch (e) {
+            console.error("Error recalculando resumen diario (crearTransaccion):", e);
+        }
 
         return res.status(201).json({
             message: "Transacción registrada exitosamente.",
@@ -105,7 +114,7 @@ export const listarPorFecha = async (req, res) => {
         }
 
         const inicio = inicioDelDia(fecha);
-        const fin = finDelDia(fecha);
+        const fin = finDelDia(inicio);
 
         const transacciones = await Transaction.find({
             createdAt: { $gte: inicio, $lte: fin },
@@ -141,16 +150,28 @@ export const editarTransaccion = async (req, res) => {
         }
 
         if (descripcion !== undefined) transaccion.descripcion = descripcion;
-        if (monto !== undefined) transaccion.monto = monto;
+
+        if (monto !== undefined) {
+            const montoNum = Number(monto);
+            if (!Number.isFinite(montoNum) || montoNum < 0) {
+                return res.status(400).json({ message: "Monto inválido." });
+            }
+            transaccion.monto = montoNum;
+        }
+
         if (metodoPago !== undefined) transaccion.metodoPago = metodoPago;
         if (categoria !== undefined) transaccion.categoria = categoria;
         if (paciente !== undefined) transaccion.paciente = paciente || null;
 
         await transaccion.save();
 
-        const fecha = transaccion.createdAt;
-        await recalcularResumenDiario(fecha, req.user.organizacion);
-        await recalcularConsolidadoMensual(fecha, req.user.organizacion);
+        // ✅ Recalcular SOLO diario (fecha del día de la transacción)
+        const fechaClave = inicioDelDia(transaccion.createdAt);
+        try {
+            await recalcularResumenDiario(fechaClave, req.user.organizacion);
+        } catch (e) {
+            console.error("Error recalculando resumen diario (editarTransaccion):", e);
+        }
 
         return res.status(200).json({
             message: "Transacción actualizada exitosamente.",
@@ -179,12 +200,16 @@ export const eliminarTransaccion = async (req, res) => {
             return res.status(404).json({ message: "Transacción no encontrada." });
         }
 
-        const fecha = transaccion.createdAt;
+        const fechaClave = inicioDelDia(transaccion.createdAt);
 
         await transaccion.deleteOne();
 
-        await recalcularResumenDiario(fecha, req.user.organizacion);
-        await recalcularConsolidadoMensual(fecha, req.user.organizacion);
+        // ✅ Recalcular SOLO diario (para el día afectado)
+        try {
+            await recalcularResumenDiario(fechaClave, req.user.organizacion);
+        } catch (e) {
+            console.error("Error recalculando resumen diario (eliminarTransaccion):", e);
+        }
 
         return res.status(200).json({ message: "Transacción eliminada exitosamente." });
     } catch (error) {
