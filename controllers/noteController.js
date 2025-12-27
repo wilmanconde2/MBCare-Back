@@ -9,26 +9,81 @@ import Patient from "../models/Patient.js";
  */
 export const crearNota = async (req, res) => {
     try {
-        const { paciente, titulo, contenido, tipoNota, adjuntos } = req.body;
-        const profesional = req.user._id;
-        const organizacion = req.user.organizacion;
+        const {
+            paciente,
 
-        if (!paciente || !contenido) {
-            return res.status(400).json({ message: "Paciente y contenido son obligatorios." });
+            // ✅ nuevos campos
+            fechaSesion,
+            observaciones,
+            diagnostico,
+            planTratamiento,
+
+            // legacy
+            titulo,
+            contenido,
+            tipoNota,
+            adjuntos,
+        } = req.body;
+
+        const userId = req.user?._id || req.user?.id;
+        const orgId = req.user?.organizacion;
+
+        if (!userId) {
+            return res.status(401).json({ message: "Usuario no autenticado." });
+        }
+
+        if (!orgId) {
+            return res.status(400).json({ message: "Organización no encontrada en el token." });
+        }
+
+        if (!paciente) {
+            return res.status(400).json({ message: "Paciente es obligatorio." });
         }
 
         if (!mongoose.Types.ObjectId.isValid(paciente)) {
             return res.status(400).json({ message: "ID de paciente inválido." });
         }
 
+        // ✅ Validación mínima real para notas nuevas:
+        const tieneClinico =
+            (observaciones && String(observaciones).trim()) ||
+            (diagnostico && String(diagnostico).trim()) ||
+            (planTratamiento && String(planTratamiento).trim());
+
+        const tieneLegacy = contenido && String(contenido).trim();
+
+        if (!tieneClinico && !tieneLegacy) {
+            return res.status(400).json({
+                message:
+                    "La nota no puede estar vacía. Ingresa Observaciones, Diagnóstico, Plan de tratamiento o contenido.",
+            });
+        }
+
+        // ✅ Parse fechaSesion (si viene), si no => ahora
+        let fechaSesionParsed = new Date();
+        if (fechaSesion) {
+            const d = new Date(fechaSesion);
+            if (isNaN(d.getTime())) {
+                return res.status(400).json({ message: "Fecha de sesión inválida." });
+            }
+            fechaSesionParsed = d;
+        }
+
         const nuevaNota = await Note.create({
             paciente,
-            profesional,
-            organizacion,
-            titulo,
-            contenido,
-            tipoNota,
-            adjuntos,
+            profesional: userId,
+            organizacion: orgId,
+
+            fechaSesion: fechaSesionParsed,
+            observaciones: observaciones || "",
+            diagnostico: diagnostico || "",
+            planTratamiento: planTratamiento || "",
+
+            // legacy guardado también (por compat)
+            titulo: titulo || "",
+            contenido: contenido || "",
+            tipoNota: tipoNota || "",
+            adjuntos: Array.isArray(adjuntos) ? adjuntos : [],
         });
 
         res.status(201).json({
@@ -42,41 +97,6 @@ export const crearNota = async (req, res) => {
 };
 
 /**
- * 📋 Listar todas las notas clínicas de un paciente (por ObjectId)
- * Fundador → todas
- * Asistente → todas
- * Profesional → SOLO SUS notas
- */
-export const obtenerNotasPorPaciente = async (req, res) => {
-    try {
-        const { pacienteId } = req.params;
-
-        if (!mongoose.Types.ObjectId.isValid(pacienteId)) {
-            return res.status(400).json({ message: "ID de paciente inválido." });
-        }
-
-        const filtro = {
-            paciente: pacienteId,
-            organizacion: req.user.organizacion,
-        };
-
-        // Profesional solo puede ver sus notas
-        if (req.user.rol === "Profesional") {
-            filtro.profesional = req.user._id;
-        }
-
-        const notas = await Note.find(filtro)
-            .populate("profesional", "nombre email")
-            .sort({ createdAt: -1 });
-
-        res.status(200).json({ notas });
-    } catch (error) {
-        console.error("Error al obtener notas:", error);
-        res.status(500).json({ message: "Error al obtener notas clínicas.", error: error.message });
-    }
-};
-
-/**
  * 📋 Obtener notas por número de documento (validando organización)
  * Fundador → todas
  * Asistente → todas
@@ -86,13 +106,24 @@ export const obtenerNotasPorDocumento = async (req, res) => {
     try {
         const { numeroDocumento } = req.params;
 
+        const userId = req.user?._id || req.user?.id;
+        const orgId = req.user?.organizacion;
+
+        if (!userId) {
+            return res.status(401).json({ message: "Usuario no autenticado." });
+        }
+
+        if (!orgId) {
+            return res.status(400).json({ message: "Organización no encontrada en el token." });
+        }
+
         if (!numeroDocumento) {
             return res.status(400).json({ message: "El número de documento es obligatorio." });
         }
 
         const paciente = await Patient.findOne({
             numeroDocumento,
-            organizacion: req.user.organizacion,
+            organizacion: orgId,
         });
 
         if (!paciente) {
@@ -101,19 +132,20 @@ export const obtenerNotasPorDocumento = async (req, res) => {
 
         const filtro = {
             paciente: paciente._id,
-            organizacion: req.user.organizacion,
+            organizacion: orgId,
         };
 
         // Profesional solo ve sus notas
         if (req.user.rol === "Profesional") {
-            filtro.profesional = req.user._id;
+            filtro.profesional = userId;
         }
 
         const notas = await Note.find(filtro)
             .populate("profesional", "nombre email")
-            .sort({ createdAt: -1 });
+            .populate("paciente", "nombreCompleto numeroDocumento")
+            .sort({ fechaSesion: -1, createdAt: -1 });
 
-        res.status(200).json({ notas });
+        res.status(200).json({ notas, paciente });
     } catch (error) {
         console.error("Error al obtener notas por documento:", error);
         res.status(500).json({ message: "Error al obtener notas clínicas.", error: error.message });
@@ -122,13 +154,21 @@ export const obtenerNotasPorDocumento = async (req, res) => {
 
 /**
  * 🔍 Obtener una nota por ID
- * Fundador → puede ver
- * Asistente → puede ver
- * Profesional → solo sus notas
  */
 export const obtenerNotaPorId = async (req, res) => {
     try {
         const { id } = req.params;
+
+        const userId = req.user?._id || req.user?.id;
+        const orgId = req.user?.organizacion;
+
+        if (!userId) {
+            return res.status(401).json({ message: "Usuario no autenticado." });
+        }
+
+        if (!orgId) {
+            return res.status(400).json({ message: "Organización no encontrada en el token." });
+        }
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: "ID de nota inválido." });
@@ -136,15 +176,18 @@ export const obtenerNotaPorId = async (req, res) => {
 
         const nota = await Note.findOne({
             _id: id,
-            organizacion: req.user.organizacion,
-        }).populate("profesional", "nombre email");
+            organizacion: orgId,
+        })
+            .populate("profesional", "nombre email")
+            .populate("paciente", "nombreCompleto numeroDocumento");
 
         if (!nota) {
             return res.status(404).json({ message: "Nota no encontrada." });
         }
 
         // Profesional solo puede ver sus notas
-        if (req.user.rol === "Profesional" && nota.profesional.toString() !== req.user._id.toString()) {
+        const esAutor = String(nota.profesional) === String(userId);
+        if (req.user.rol === "Profesional" && !esAutor) {
             return res.status(403).json({ message: "No tienes permisos para ver esta nota." });
         }
 
@@ -157,14 +200,36 @@ export const obtenerNotaPorId = async (req, res) => {
 
 /**
  * 📝 Editar una nota clínica existente
- * Fundador → todas
- * Asistente → todas
- * Profesional → solo sus notas
  */
 export const editarNota = async (req, res) => {
     try {
         const { id } = req.params;
-        const { titulo, contenido, tipoNota, adjuntos } = req.body;
+
+        const {
+            // nuevos campos
+            fechaSesion,
+            observaciones,
+            diagnostico,
+            planTratamiento,
+
+            // legacy
+            titulo,
+            contenido,
+            tipoNota,
+            adjuntos,
+            paciente, // opcional: si permites cambiar paciente (si no, lo ignoras)
+        } = req.body;
+
+        const userId = req.user?._id || req.user?.id;
+        const orgId = req.user?.organizacion;
+
+        if (!userId) {
+            return res.status(401).json({ message: "Usuario no autenticado." });
+        }
+
+        if (!orgId) {
+            return res.status(400).json({ message: "Organización no encontrada en el token." });
+        }
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: "ID de nota inválido." });
@@ -172,13 +237,13 @@ export const editarNota = async (req, res) => {
 
         const nota = await Note.findById(id);
 
-        if (!nota || nota.organizacion.toString() !== req.user.organizacion.toString()) {
+        if (!nota || String(nota.organizacion) !== String(orgId)) {
             return res.status(404).json({ message: "Nota no encontrada." });
         }
 
         const esFundador = req.user.rol === "Fundador";
         const esAsistente = req.user.rol === "Asistente";
-        const esAutor = nota.profesional.toString() === req.user._id.toString();
+        const esAutor = String(nota.profesional) === String(userId);
 
         // Profesional: solo edita sus notas
         // Asistente: puede editar todas
@@ -186,10 +251,33 @@ export const editarNota = async (req, res) => {
             return res.status(403).json({ message: "No tienes permisos para editar esta nota." });
         }
 
-        if (titulo !== undefined) nota.titulo = titulo;
-        if (contenido !== undefined) nota.contenido = contenido;
-        if (tipoNota !== undefined) nota.tipoNota = tipoNota;
-        if (adjuntos !== undefined) nota.adjuntos = adjuntos;
+        // Cambiar paciente (si lo quieres permitir)
+        if (paciente !== undefined) {
+            if (!mongoose.Types.ObjectId.isValid(paciente)) {
+                return res.status(400).json({ message: "ID de paciente inválido." });
+            }
+            nota.paciente = paciente;
+        }
+
+        // fechaSesion
+        if (fechaSesion !== undefined) {
+            const d = new Date(fechaSesion);
+            if (isNaN(d.getTime())) {
+                return res.status(400).json({ message: "Fecha de sesión inválida." });
+            }
+            nota.fechaSesion = d;
+        }
+
+        // nuevos campos
+        if (observaciones !== undefined) nota.observaciones = observaciones || "";
+        if (diagnostico !== undefined) nota.diagnostico = diagnostico || "";
+        if (planTratamiento !== undefined) nota.planTratamiento = planTratamiento || "";
+
+        // legacy
+        if (titulo !== undefined) nota.titulo = titulo || "";
+        if (contenido !== undefined) nota.contenido = contenido || "";
+        if (tipoNota !== undefined) nota.tipoNota = tipoNota || "";
+        if (adjuntos !== undefined) nota.adjuntos = Array.isArray(adjuntos) ? adjuntos : [];
 
         await nota.save();
 
@@ -205,13 +293,21 @@ export const editarNota = async (req, res) => {
 
 /**
  * 🗑️ Eliminar una nota clínica
- * Fundador → puede eliminar
- * Profesional → solo si es suya
- * Asistente → NO puede eliminar
  */
 export const eliminarNota = async (req, res) => {
     try {
         const { id } = req.params;
+
+        const userId = req.user?._id || req.user?.id;
+        const orgId = req.user?.organizacion;
+
+        if (!userId) {
+            return res.status(401).json({ message: "Usuario no autenticado." });
+        }
+
+        if (!orgId) {
+            return res.status(400).json({ message: "Organización no encontrada en el token." });
+        }
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ message: "ID de nota inválido." });
@@ -219,12 +315,12 @@ export const eliminarNota = async (req, res) => {
 
         const nota = await Note.findById(id);
 
-        if (!nota || nota.organizacion.toString() !== req.user.organizacion.toString()) {
+        if (!nota || String(nota.organizacion) !== String(orgId)) {
             return res.status(404).json({ message: "Nota no encontrada." });
         }
 
         const esFundador = req.user.rol === "Fundador";
-        const esAutor = nota.profesional.toString() === req.user._id.toString();
+        const esAutor = String(nota.profesional) === String(userId);
 
         // Asistente nunca puede eliminar
         if (req.user.rol === "Asistente") {

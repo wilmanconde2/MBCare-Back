@@ -2,14 +2,8 @@ import ResumenCaja from "../models/ResumenCaja.js";
 import Transaction from "../models/Transaction.js";
 import CashRegister from "../models/CashRegister.js";
 import { inicioDelDia, finDelDia } from "../config/timezone.js";
-import { recalcularResumenDiario } from "../utils/recalculoCaja.js";
+import { recalcularTodo } from "../utils/recalculoCaja.js";
 
-/* ========================================================================
-   📊 Generar y guardar resumen diario de caja
-   Fundador → permitido
-   Asistente → permitido
-   Profesional → PROHIBIDO
-========================================================================= */
 export const generarResumen = async (req, res) => {
     try {
         if (req.user.rol === "Profesional") {
@@ -23,11 +17,9 @@ export const generarResumen = async (req, res) => {
             return res.status(400).json({ message: "La fecha es obligatoria." });
         }
 
-        // ✅ IDEAL: una sola regla para fechas
         const inicioDia = inicioDelDia(fecha);
         const finDia = finDelDia(inicioDia);
 
-        // Buscar caja del día (por organización)
         const caja = await CashRegister.findOne({
             fecha: { $gte: inicioDia, $lte: finDia },
             organizacion: req.user.organizacion,
@@ -74,11 +66,11 @@ export const generarResumen = async (req, res) => {
             egresosTotales,
             saldoInicial,
             saldoFinal,
-            creadoPor: req.user._id,
+            creadoPor: req.user?._id || req.user?.id,
         });
 
-        // ✔ Recalcular después de crear
-        await recalcularResumenDiario(inicioDia, req.user.organizacion);
+        const userId = req.user?._id || req.user?.id;
+        await recalcularTodo(inicioDia, req.user.organizacion, userId);
 
         return res.status(201).json({
             message: "Resumen generado exitosamente.",
@@ -91,11 +83,6 @@ export const generarResumen = async (req, res) => {
     }
 };
 
-/* ========================================================================
-   📋 Consultar resumen diario por fecha
-   - Devuelve también el estado de la caja (abierta/cerrada)
-   - Si no existe resumen aún, calcula uno en memoria para renderizar UI
-========================================================================= */
 export const consultarResumen = async (req, res) => {
     try {
         if (req.user.rol === "Profesional") {
@@ -109,11 +96,9 @@ export const consultarResumen = async (req, res) => {
             return res.status(400).json({ message: "La fecha es obligatoria." });
         }
 
-        // ✅ IDEAL: una sola regla para fechas
         const inicioDia = inicioDelDia(fecha);
         const finDia = finDelDia(inicioDia);
 
-        // Buscar caja del día (por organización)
         const caja = await CashRegister.findOne({
             fecha: { $gte: inicioDia, $lte: finDia },
             organizacion: req.user.organizacion,
@@ -123,15 +108,14 @@ export const consultarResumen = async (req, res) => {
             return res.status(404).json({ message: "No se encontró caja para esa fecha." });
         }
 
-        // ✔ Punto 2 NO va: se mantiene recalculo siempre
-        await recalcularResumenDiario(inicioDia, req.user.organizacion);
+        const userId = req.user?._id || req.user?.id;
+        await recalcularTodo(inicioDia, req.user.organizacion, userId);
 
         let resumen = await ResumenCaja.findOne({
             fecha: inicioDia,
             organizacion: req.user.organizacion,
         });
 
-        // Si todavía no existe resumen, lo calculamos en memoria (sin guardar)
         if (!resumen) {
             const transacciones = await Transaction.find({
                 createdAt: { $gte: inicioDia, $lte: finDia },

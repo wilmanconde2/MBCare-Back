@@ -7,15 +7,8 @@ import { inicioDelDia, finDelDia } from "../config/timezone.js";
 
 const TZ = "America/Bogota";
 
-/**
- * ✅ Normalizar fecha (IDEAL):
- * Toda la app usa inicioDelDia(fecha) como única fuente de verdad.
- */
 const normalizarFecha = (fecha) => inicioDelDia(fecha);
 
-/* ============================================================================
-   🔄 RE-CÁLCULO DE RESUMEN DIARIO
-============================================================================ */
 export const recalcularResumenDiario = async (fecha, organizacionId) => {
     try {
         const fechaInicio = normalizarFecha(fecha);
@@ -76,15 +69,9 @@ export const recalcularResumenDiario = async (fecha, organizacionId) => {
     }
 };
 
-/* ============================================================================
-   🔄 RE-CÁLCULO DE CONSOLIDADO MENSUAL
-============================================================================ */
-export const recalcularConsolidadoMensual = async (fecha, organizacionId) => {
+export const recalcularConsolidadoMensual = async (fecha, organizacionId, userId = null) => {
     try {
-        // ✅ Normalizamos antes de calcular el mes, para evitar “cortes” por hora/zona
-        const fechaClave = normalizarFecha(fecha);
-
-        const f = moment(fechaClave).tz(TZ);
+        const f = moment(fecha).tz(TZ);
         const anio = f.year();
         const mes = f.month() + 1;
 
@@ -100,6 +87,7 @@ export const recalcularConsolidadoMensual = async (fecha, organizacionId) => {
             (a, r) => a + (Number(r.ingresosTotales) || 0),
             0
         );
+
         const egresosTotales = resumenes.reduce(
             (a, r) => a + (Number(r.egresosTotales) || 0),
             0
@@ -119,18 +107,26 @@ export const recalcularConsolidadoMensual = async (fecha, organizacionId) => {
             consolidado.egresosTotales = egresosTotales;
             consolidado.saldoInicial = saldoInicial;
             consolidado.saldoFinal = saldoFinal;
+            consolidado.ultimaActualizacion = new Date();
             await consolidado.save();
-        } else {
-            consolidado = await ConsolidadoMensual.create({
-                mes,
-                anio,
-                organizacion: organizacionId,
-                ingresosTotales,
-                egresosTotales,
-                saldoInicial,
-                saldoFinal,
-            });
+            return consolidado;
         }
+
+        if (!userId) {
+            throw new Error("No se puede crear consolidado mensual sin userId (creadoPor requerido).");
+        }
+
+        consolidado = await ConsolidadoMensual.create({
+            mes,
+            anio,
+            organizacion: organizacionId,
+            ingresosTotales,
+            egresosTotales,
+            saldoInicial,
+            saldoFinal,
+            creadoPor: userId,
+            ultimaActualizacion: new Date(),
+        });
 
         return consolidado;
     } catch (err) {
@@ -139,27 +135,11 @@ export const recalcularConsolidadoMensual = async (fecha, organizacionId) => {
     }
 };
 
-/* ============================================================================
-   ✅ Helper: recalcular todo (diario + mensual)
-   - Útil para crear/editar/eliminar transacciones, y para cerrar caja
-============================================================================ */
-export const recalcularTodo = async (fecha, organizacionId) => {
+export const recalcularTodo = async (fecha, organizacionId, userId = null) => {
     const fechaClave = normalizarFecha(fecha);
 
-    let resumen = null;
-    let consolidado = null;
+    const resumen = await recalcularResumenDiario(fechaClave, organizacionId);
+    const consolidado = await recalcularConsolidadoMensual(fechaClave, organizacionId, userId);
 
-    try {
-        resumen = await recalcularResumenDiario(fechaClave, organizacionId);
-    } catch (e) {
-        console.error("Error en recalcularTodo -> recalcularResumenDiario:", e);
-    }
-
-    try {
-        consolidado = await recalcularConsolidadoMensual(fechaClave, organizacionId);
-    } catch (e) {
-        console.error("Error en recalcularTodo -> recalcularConsolidadoMensual:", e);
-    }
-
-    return { fechaClave, resumen, consolidado };
+    return { resumen, consolidado };
 };

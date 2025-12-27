@@ -5,8 +5,7 @@ import { inicioDelDia, finDelDia } from "../config/timezone.js";
 import moment from "moment-timezone";
 import PDFDocument from "pdfkit";
 import { auditar } from "../utils/auditar.js";
-import { recalcularResumenDiario } from "../utils/recalculoCaja.js";
-import { recalcularTodo } from "../utils/recalculoCaja.js";
+import { recalcularResumenDiario, recalcularTodo } from "../utils/recalculoCaja.js";
 
 import {
     getRangoHoy,
@@ -16,22 +15,16 @@ import {
     obtenerResumenOficialODerivado,
 } from "../utils/cajaUtils.js";
 
-/* =====================================================
-   Estado caja hoy
-   - Devuelve si hay caja hoy y si está abierta
-===================================================== */
 export const estadoCajaHoy = async (req, res) => {
     try {
         const { inicio, fin } = getRangoHoy();
 
-        // Prioriza abierta si existe
         let caja = await CashRegister.findOne({
             fecha: { $gte: inicio, $lte: fin },
             organizacion: req.user.organizacion,
             abierta: true,
         });
 
-        // Si no hay abierta, trae la última del día (cerrada)
         if (!caja) {
             caja = await CashRegister.findOne({
                 fecha: { $gte: inicio, $lte: fin },
@@ -49,10 +42,6 @@ export const estadoCajaHoy = async (req, res) => {
     }
 };
 
-/* =====================================================
-   Abrir caja
-   - Regla: SOLO 1 caja diaria por organización (required)
-===================================================== */
 export const abrirCaja = async (req, res) => {
     try {
         const { saldoInicial } = req.body;
@@ -63,7 +52,6 @@ export const abrirCaja = async (req, res) => {
 
         const { inicio, fin } = getRangoHoy();
 
-        // ✅ Regla 1 caja diaria: verificar por ORGANIZACIÓN (no por profesional)
         const existe = await CashRegister.findOne({
             fecha: { $gte: inicio, $lte: fin },
             organizacion: req.user.organizacion,
@@ -74,7 +62,7 @@ export const abrirCaja = async (req, res) => {
             return res.status(400).json({ message: "Ya hay una caja abierta hoy." });
         }
 
-        const profesionalId = req.user?._id || req.user?.id; // quien la abre
+        const profesionalId = req.user?._id || req.user?.id;
         if (!profesionalId) {
             return res.status(500).json({ message: "No se pudo determinar el profesional." });
         }
@@ -96,17 +84,11 @@ export const abrirCaja = async (req, res) => {
     }
 };
 
-/* =====================================================
-   Cerrar caja
-   - Regla: SOLO 1 caja diaria por organización (required)
-   - Aquí sí recalculamos TODO (diario + mensual)
-===================================================== */
 export const cerrarCaja = async (req, res) => {
     try {
         const { inicio, fin } = getRangoHoy();
         const fechaClave = inicioDelDia(inicio);
 
-        // ✅ Buscar caja abierta por ORGANIZACIÓN (no por profesional)
         const caja = await CashRegister.findOne({
             fecha: { $gte: inicio, $lte: fin },
             organizacion: req.user.organizacion,
@@ -136,8 +118,9 @@ export const cerrarCaja = async (req, res) => {
             saldoFinal,
         });
 
-        // ✅ Cierre = FULL update
-        await recalcularTodo(fechaClave, req.user.organizacion);
+        const userId = req.user?._id || req.user?.id;
+
+        await recalcularTodo(fechaClave, req.user.organizacion, userId);
 
         return res.status(200).json({
             message: "Caja cerrada.",
@@ -150,9 +133,6 @@ export const cerrarCaja = async (req, res) => {
     }
 };
 
-/* =====================================================
-   Detalle caja
-===================================================== */
 export const detalleCajaPorId = async (req, res) => {
     try {
         const { cajaId } = req.params;
@@ -190,10 +170,6 @@ export const detalleCajaPorId = async (req, res) => {
     }
 };
 
-/* =====================================================
-   Historial de cajas cerradas
-   Fundador + Asistente (Profesional prohibido)
-===================================================== */
 export const historialCajas = async (req, res) => {
     try {
         if (req.user.rol === "Profesional") {
@@ -223,7 +199,6 @@ export const historialCajas = async (req, res) => {
             };
         }
 
-        // Si quieres filtrar por profesional, mantenlo (no rompe la regla 1 caja/día)
         if (profesionalId) {
             filtros.profesional = profesionalId;
         }
@@ -236,7 +211,6 @@ export const historialCajas = async (req, res) => {
             .skip(skip)
             .limit(parseInt(limit));
 
-        // ✅ Recalcular resumen diario (solo diario) para adjuntar totales consistentes
         for (const caja of cajas) {
             await recalcularResumenDiario(caja.fecha, organizacionId);
         }
@@ -247,9 +221,7 @@ export const historialCajas = async (req, res) => {
             fecha: { $in: fechasInicioDia },
         });
 
-        const mapResumenPorFecha = new Map(
-            resumenes.map((r) => [new Date(r.fecha).toISOString(), r])
-        );
+        const mapResumenPorFecha = new Map(resumenes.map((r) => [new Date(r.fecha).toISOString(), r]));
 
         const cajasConTotales = cajas.map((c) => {
             const key = new Date(inicioDelDia(c.fecha)).toISOString();
@@ -277,10 +249,6 @@ export const historialCajas = async (req, res) => {
     }
 };
 
-/* =====================================================
-   Exportar historial de cajas en PDF
-   Solo Fundador
-===================================================== */
 export const exportarHistorialCajaPDF = async (req, res) => {
     try {
         if (req.user.rol !== "Fundador") {
@@ -299,20 +267,16 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             organizacion: req.user.organizacion,
         };
 
-        // =========================
-        // ✅ Caso especial: UN SOLO DÍA (desde == hasta)
-        // =========================
         const esRangoDia =
             desde &&
             hasta &&
             inicioDelDia(desde)?.getTime?.() === inicioDelDia(hasta)?.getTime?.();
 
         if (esRangoDia) {
-            const fechaISO = desde; // viene en YYYY-MM-DD desde el front
+            const fechaISO = desde;
             const inicio = inicioDelDia(fechaISO);
             const fin = finDelDia(inicio);
 
-            // caja del día (por org y cerrada)
             const caja = await CashRegister.findOne({
                 organizacion: req.user.organizacion,
                 abierta: false,
@@ -323,10 +287,8 @@ export const exportarHistorialCajaPDF = async (req, res) => {
                 return res.status(404).json({ message: "No se encontró caja cerrada para esa fecha." });
             }
 
-            // asegurar consistencia de totales (saldoFinal + ResumenCaja)
             await recalcularResumenDiario(caja.fecha, req.user.organizacion);
 
-            // traer movimientos del día (por caja o fallback por rango del día)
             const transaccionesRaw = await obtenerTransaccionesDeCajaOFecha({
                 organizacionId: req.user.organizacion,
                 cajaId: caja._id,
@@ -358,7 +320,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             res.setHeader("Content-Disposition", `attachment; filename=caja_${fechaISO}.pdf`);
             doc.pipe(res);
 
-            // Header
             doc.fontSize(18).text("Caja del día - MBCare", { align: "center" });
             doc.moveDown(0.8);
 
@@ -368,7 +329,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             doc.text(`Profesional de caja: ${caja.profesional?.nombre || "N/A"}`);
             doc.moveDown(0.8);
 
-            // Resumen
             doc.fontSize(13).text("Resumen", { underline: true });
             doc.moveDown(0.4);
 
@@ -379,7 +339,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             doc.text(`Saldo final: ${money(saldoFinal)}`);
             doc.moveDown(0.8);
 
-            // Movimientos
             doc.fontSize(13).text("Movimientos del día", { underline: true });
             doc.moveDown(0.6);
 
@@ -389,7 +348,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
                 return;
             }
 
-            // Helpers simples para layout
             const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
             const col = {
@@ -416,7 +374,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
                 if (doc.y + needed > bottom) doc.addPage();
             };
 
-            // Encabezado tabla
             doc.fontSize(9).fillColor("#374151");
             doc.text("#", x0, doc.y, { width: col.idx });
             doc.text("Hora", x0 + col.idx, doc.y, { width: col.hora });
@@ -435,7 +392,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             yLine();
             doc.moveDown(0.4);
 
-            // Filas
             doc.fontSize(9).fillColor("black");
 
             transacciones.forEach((t, i) => {
@@ -455,9 +411,7 @@ export const exportarHistorialCajaPDF = async (req, res) => {
                 doc.text(t.hora || "", x0 + col.idx, yStart, { width: col.hora });
                 doc.text(tipoTxt, x0 + col.idx + col.hora, yStart, { width: col.tipo });
 
-                doc.text(montoTxt, x0 + col.idx + col.hora + col.tipo, yStart, {
-                    width: col.monto,
-                });
+                doc.text(montoTxt, x0 + col.idx + col.hora + col.tipo, yStart, { width: col.monto });
 
                 doc.text(metodoTxt, x0 + col.idx + col.hora + col.tipo + col.monto, yStart, {
                     width: col.metodo,
@@ -479,9 +433,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             return;
         }
 
-        // =========================
-        // Caso normal: mes / año / rango (historial)
-        // =========================
         if (mes && /^\d{4}-\d{2}$/.test(mes)) {
             const inicio = moment.tz(`${mes}-01`, TZ).startOf("month").toDate();
             const fin = moment.tz(inicio, TZ).endOf("month").toDate();
@@ -501,7 +452,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             .populate("profesional", "nombre email")
             .sort({ fecha: -1 });
 
-        // ✅ Recalcular resumen diario para que saldoFinal/ResumenCaja esté consistente
         for (const caja of cajas) {
             await recalcularResumenDiario(caja.fecha, req.user.organizacion);
         }

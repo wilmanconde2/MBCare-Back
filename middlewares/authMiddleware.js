@@ -49,6 +49,7 @@ export const protect = async (req, res, next) => {
 
         // 6️⃣ Adjuntar usuario a la request
         req.user = {
+            _id: user._id,
             id: user._id,
             nombre: user.nombre,
             email: user.email,
