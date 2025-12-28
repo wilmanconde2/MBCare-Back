@@ -2,13 +2,24 @@ import mongoose from "mongoose";
 
 const cashRegisterSchema = new mongoose.Schema(
     {
+        businessDate: {
+            type: String, // YYYY-MM-DD
+            required: true,
+        },
+        timezone: {
+            type: String,
+            default: "America/Bogota",
+        },
+
+        // Mantienes fecha como Date (inicio del día Bogotá en UTC)
         fecha: {
             type: Date,
             required: true,
         },
+
         saldoInicial: {
             type: Number,
-            required: true,
+            default: 0,
         },
         saldoFinal: {
             type: Number,
@@ -29,12 +40,13 @@ const cashRegisterSchema = new mongoose.Schema(
             required: true,
         },
     },
-    {
-        timestamps: true,
-        versionKey: false,
-    }
+    { timestamps: true }
 );
 
-cashRegisterSchema.index({ fecha: 1, organizacion: 1 }, { unique: true });
+// 🔒 UNA SOLA CAJA POR DÍA Y ORGANIZACIÓN
+cashRegisterSchema.index(
+    { organizacion: 1, businessDate: 1 },
+    { unique: true }
+);
 
 export default mongoose.model("CashRegister", cashRegisterSchema);

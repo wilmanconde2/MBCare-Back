@@ -1,34 +1,46 @@
 import CashRegister from "../models/CashRegister.js";
 import Transaction from "../models/Transaction.js";
 import ResumenCaja from "../models/ResumenCaja.js";
-import { inicioDelDia, finDelDia } from "../config/timezone.js";
+import ConsolidadoMensual from "../models/ConsolidadoMensual.js";
+import { inicioDelDia, finDelDia, fechaISO, ZONA_HORARIA, rangoUTCDesdeBusinessDate } from "../config/timezone.js";
 import moment from "moment-timezone";
 import PDFDocument from "pdfkit";
 import { auditar } from "../utils/auditar.js";
 import { recalcularResumenDiario, recalcularTodo } from "../utils/recalculoCaja.js";
 
 import {
-    getRangoHoy,
     calcularTotales,
     formatearTransaccion,
     obtenerTransaccionesDeCajaOFecha,
     obtenerResumenOficialODerivado,
 } from "../utils/cajaUtils.js";
 
+/**
+ * Helper: userId consistente
+ */
+const getUserId = (req) => req.user?._id || req.user?.id;
+
+/**
+ * ✅ Estado de la caja de HOY (por businessDate Bogotá)
+ * Ruta: GET /api/caja/estado-hoy
+ */
 export const estadoCajaHoy = async (req, res) => {
     try {
-        const { inicio, fin } = getRangoHoy();
+        const organizacionId = req.user.organizacion;
+        const businessDate = fechaISO(); // YYYY-MM-DD en Bogotá :contentReference[oaicite:1]{index=1}
 
+        // Prioridad: caja abierta del día
         let caja = await CashRegister.findOne({
-            fecha: { $gte: inicio, $lte: fin },
-            organizacion: req.user.organizacion,
+            organizacion: organizacionId,
+            businessDate,
             abierta: true,
         });
 
+        // Si no hay abierta, busca la última del día (abierta o cerrada)
         if (!caja) {
             caja = await CashRegister.findOne({
-                fecha: { $gte: inicio, $lte: fin },
-                organizacion: req.user.organizacion,
+                organizacion: organizacionId,
+                businessDate,
             }).sort({ createdAt: -1 });
         }
 
@@ -42,19 +54,27 @@ export const estadoCajaHoy = async (req, res) => {
     }
 };
 
+/**
+ * ✅ Abrir caja de HOY (por businessDate Bogotá)
+ * Ruta: POST /api/caja/abrir
+ */
 export const abrirCaja = async (req, res) => {
     try {
+        const organizacionId = req.user.organizacion;
+        const profesionalId = getUserId(req);
+
         const { saldoInicial } = req.body;
 
-        if (typeof saldoInicial !== "number" || saldoInicial < 0) {
+        const saldo = Number(saldoInicial);
+        if (!Number.isFinite(saldo) || saldo < 0) {
             return res.status(400).json({ message: "Saldo inicial inválido." });
         }
 
-        const { inicio, fin } = getRangoHoy();
+        const businessDate = fechaISO(); // Bogotá (YYYY-MM-DD) :contentReference[oaicite:2]{index=2}
 
         const existe = await CashRegister.findOne({
-            fecha: { $gte: inicio, $lte: fin },
-            organizacion: req.user.organizacion,
+            organizacion: organizacionId,
+            businessDate,
             abierta: true,
         });
 
@@ -62,20 +82,21 @@ export const abrirCaja = async (req, res) => {
             return res.status(400).json({ message: "Ya hay una caja abierta hoy." });
         }
 
-        const profesionalId = req.user?._id || req.user?.id;
-        if (!profesionalId) {
-            return res.status(500).json({ message: "No se pudo determinar el profesional." });
-        }
+        // Mantener compatibilidad: fecha como inicio del día Bogotá (Date UTC equivalente)
+        const fecha = inicioDelDia(businessDate);
 
         const caja = await CashRegister.create({
-            saldoInicial,
+            businessDate,
+            timezone: ZONA_HORARIA || "America/Bogota",
+            fecha,
+            saldoInicial: saldo,
+            saldoFinal: saldo,
             profesional: profesionalId,
-            organizacion: req.user.organizacion,
+            organizacion: organizacionId,
             abierta: true,
-            fecha: inicio,
         });
 
-        await auditar(req, "ABRIR_CAJA", { cajaId: caja._id, saldoInicial });
+        await auditar(req, "ABRIR_CAJA", { cajaId: caja._id, businessDate, saldoInicial: saldo });
 
         return res.status(201).json({ message: "Caja abierta.", caja });
     } catch (error) {
@@ -84,14 +105,19 @@ export const abrirCaja = async (req, res) => {
     }
 };
 
+/**
+ * ✅ Cerrar caja de HOY (por businessDate Bogotá)
+ * Ruta: POST /api/caja/cerrar
+ */
 export const cerrarCaja = async (req, res) => {
     try {
-        const { inicio, fin } = getRangoHoy();
-        const fechaClave = inicioDelDia(inicio);
+        const organizacionId = req.user.organizacion;
+        const userId = getUserId(req);
 
+        const businessDate = fechaISO(); // Bogotá
         const caja = await CashRegister.findOne({
-            fecha: { $gte: inicio, $lte: fin },
-            organizacion: req.user.organizacion,
+            organizacion: organizacionId,
+            businessDate,
             abierta: true,
         });
 
@@ -101,7 +127,7 @@ export const cerrarCaja = async (req, res) => {
 
         const transacciones = await Transaction.find({
             caja: caja._id,
-            organizacion: req.user.organizacion,
+            organizacion: organizacionId,
         });
 
         const { ingresos, egresos } = calcularTotales(transacciones);
@@ -111,16 +137,69 @@ export const cerrarCaja = async (req, res) => {
         caja.saldoFinal = saldoFinal;
         await caja.save();
 
-        await auditar(req, "CERRAR_CAJA", {
-            cajaId: caja._id,
-            ingresos,
-            egresos,
-            saldoFinal,
-        });
+        await auditar(req, "CERRAR_CAJA", { cajaId: caja._id, businessDate, ingresos, egresos, saldoFinal });
 
-        const userId = req.user?._id || req.user?.id;
+        // Recalcular todo usando fechaClave (inicio del día Bogotá)
+        const fechaClave = inicioDelDia(businessDate);
+        await recalcularTodo(fechaClave, organizacionId, userId);
 
-        await recalcularTodo(fechaClave, req.user.organizacion, userId);
+        // ✅ FIX: persistir (upsert) el resumen diario al cerrar caja (no depender solo del recalculo)
+        await ResumenCaja.findOneAndUpdate(
+            { organizacion: organizacionId, businessDate },
+            {
+                $set: {
+                    businessDate,
+                    timezone: ZONA_HORARIA || "America/Bogota",
+                    fecha: fechaClave, // compat (inicio del día)
+                    saldoInicial: Number(caja.saldoInicial) || 0,
+                    ingresosTotales: ingresos,
+                    egresosTotales: egresos,
+                    saldoFinal,
+                    creadoPor: userId,
+                },
+            },
+            { upsert: true, new: true }
+        );
+
+        // ✅ Recalcular y persistir consolidado mensual del mes actual (Bogotá)
+        const TZ = "America/Bogota";
+        const m = moment.tz(businessDate, "YYYY-MM-DD", TZ);
+
+        const mes = m.month() + 1;       // 1..12
+        const anio = m.year();
+
+        const fechaInicioMes = m.clone().startOf("month").toDate();
+        const fechaFinMes = m.clone().endOf("month").toDate();
+
+        // Traer todos los resúmenes del mes
+        const resumenesMes = await ResumenCaja.find({
+            fecha: { $gte: fechaInicioMes, $lte: fechaFinMes },
+            organizacion: organizacionId,
+        }).sort({ fecha: 1 });
+
+        const ingresosTotalesMes = resumenesMes.reduce((acc, r) => acc + (Number(r.ingresosTotales) || 0), 0);
+        const egresosTotalesMes = resumenesMes.reduce((acc, r) => acc + (Number(r.egresosTotales) || 0), 0);
+
+        const saldoInicialMes = resumenesMes.length ? (Number(resumenesMes[0].saldoInicial) || 0) : 0;
+        const saldoFinalMes = saldoInicialMes + ingresosTotalesMes - egresosTotalesMes;
+
+        await ConsolidadoMensual.findOneAndUpdate(
+            { mes, anio, organizacion: organizacionId },
+            {
+                $set: {
+                    mes,
+                    anio,
+                    organizacion: organizacionId,
+                    ingresosTotales: ingresosTotalesMes,
+                    egresosTotales: egresosTotalesMes,
+                    saldoInicial: saldoInicialMes,
+                    saldoFinal: saldoFinalMes,
+                    creadoPor: userId,
+                    ultimaActualizacion: new Date(),
+                },
+            },
+            { upsert: true, new: true }
+        );
 
         return res.status(200).json({
             message: "Caja cerrada.",
@@ -133,6 +212,10 @@ export const cerrarCaja = async (req, res) => {
     }
 };
 
+/**
+ * ✅ Detalle caja por ID (compat + consistente)
+ * Ruta: GET /api/caja/detalle/:cajaId
+ */
 export const detalleCajaPorId = async (req, res) => {
     try {
         const { cajaId } = req.params;
@@ -141,18 +224,20 @@ export const detalleCajaPorId = async (req, res) => {
         const caja = await CashRegister.findById(cajaId).populate("profesional", "nombre email");
         if (!caja) return res.status(404).json({ message: "Caja no encontrada." });
 
+        // Transacciones de esa caja
         const transaccionesRaw = await obtenerTransaccionesDeCajaOFecha({
             organizacionId,
             cajaId: caja._id,
-            fecha: caja.fecha,
+            fecha: caja.fecha, // compat
         });
 
-        const transacciones = transaccionesRaw.map(formatearTransaccion);
+        const transacciones = (transaccionesRaw || []).map(formatearTransaccion);
         const { ingresos, egresos } = calcularTotales(transacciones);
 
+        const fechaClave = inicioDelDia(caja.businessDate || caja.fecha);
         const { resumen } = await obtenerResumenOficialODerivado({
             organizacionId,
-            fechaClave: inicioDelDia(caja.fecha),
+            fechaClave,
             cajaSaldoInicial: caja.saldoInicial,
             ingresosCalc: ingresos,
             egresosCalc: egresos,
@@ -170,12 +255,17 @@ export const detalleCajaPorId = async (req, res) => {
     }
 };
 
+/**
+ * ✅ Historial de cajas cerradas
+ * Ruta: GET /api/caja/historial
+ *
+ * Nota: aquí mantenemos filtros por rango/mes con fechas Date porque ya tienes PDF/queries montadas así.
+ * Para no tocar todo, seguimos usando `fecha` Date, pero internamente las cajas nuevas tienen businessDate.
+ */
 export const historialCajas = async (req, res) => {
     try {
         if (req.user.rol === "Profesional") {
-            return res.status(403).json({
-                message: "No tienes permisos para acceder al historial de caja.",
-            });
+            return res.status(403).json({ message: "No tienes permisos para acceder al historial de caja." });
         }
 
         const organizacionId = req.user.organizacion;
@@ -193,10 +283,7 @@ export const historialCajas = async (req, res) => {
         }
 
         if (desde && hasta) {
-            filtros.fecha = {
-                $gte: inicioDelDia(desde),
-                $lte: finDelDia(hasta),
-            };
+            filtros.fecha = { $gte: inicioDelDia(desde), $lte: finDelDia(hasta) };
         }
 
         if (profesionalId) {
@@ -211,11 +298,12 @@ export const historialCajas = async (req, res) => {
             .skip(skip)
             .limit(parseInt(limit));
 
+        // Recalcular resumen diario para cada caja (manteniendo compat)
         for (const caja of cajas) {
             await recalcularResumenDiario(caja.fecha, organizacionId);
         }
 
-        const fechasInicioDia = cajas.map((c) => inicioDelDia(c.fecha));
+        const fechasInicioDia = cajas.map((c) => inicioDelDia(c.businessDate || c.fecha));
         const resumenes = await ResumenCaja.find({
             organizacion: organizacionId,
             fecha: { $in: fechasInicioDia },
@@ -224,7 +312,7 @@ export const historialCajas = async (req, res) => {
         const mapResumenPorFecha = new Map(resumenes.map((r) => [new Date(r.fecha).toISOString(), r]));
 
         const cajasConTotales = cajas.map((c) => {
-            const key = new Date(inicioDelDia(c.fecha)).toISOString();
+            const key = new Date(inicioDelDia(c.businessDate || c.fecha)).toISOString();
             const r = mapResumenPorFecha.get(key);
 
             const obj = c.toObject();
@@ -243,18 +331,20 @@ export const historialCajas = async (req, res) => {
         });
     } catch (error) {
         console.error("historialCajas:", error);
-        return res.status(500).json({
-            message: "Error al obtener historial de cajas.",
-        });
+        return res.status(500).json({ message: "Error al obtener historial de cajas." });
     }
 };
 
+/**
+ * ✅ Exportar historial a PDF
+ * Ruta: GET /api/caja/historial/exportar
+ *
+ * Mantiene compat usando fecha Date. No tocamos la estructura del PDF.
+ */
 export const exportarHistorialCajaPDF = async (req, res) => {
     try {
         if (req.user.rol !== "Fundador") {
-            return res.status(403).json({
-                message: "No tienes permisos para exportar historial de caja.",
-            });
+            return res.status(403).json({ message: "No tienes permisos para exportar historial de caja." });
         }
 
         const TZ = "America/Bogota";
@@ -272,6 +362,7 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             hasta &&
             inicioDelDia(desde)?.getTime?.() === inicioDelDia(hasta)?.getTime?.();
 
+        // Exportar un día exacto
         if (esRangoDia) {
             const fechaISO = desde;
             const inicio = inicioDelDia(fechaISO);
@@ -348,8 +439,8 @@ export const exportarHistorialCajaPDF = async (req, res) => {
                 return;
             }
 
+            // render tabla simple (igual que ya tenías)
             const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-
             const col = {
                 idx: 28,
                 hora: 48,
@@ -379,9 +470,7 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             doc.text("Hora", x0 + col.idx, doc.y, { width: col.hora });
             doc.text("Tipo", x0 + col.idx + col.hora, doc.y, { width: col.tipo });
             doc.text("Monto", x0 + col.idx + col.hora + col.tipo, doc.y, { width: col.monto });
-            doc.text("Método", x0 + col.idx + col.hora + col.tipo + col.monto, doc.y, {
-                width: col.metodo,
-            });
+            doc.text("Método", x0 + col.idx + col.hora + col.tipo + col.monto, doc.y, { width: col.metodo });
             doc.text(
                 "Descripción",
                 x0 + col.idx + col.hora + col.tipo + col.monto + col.metodo,
@@ -410,13 +499,13 @@ export const exportarHistorialCajaPDF = async (req, res) => {
                 doc.text(String(i + 1), x0, yStart, { width: col.idx });
                 doc.text(t.hora || "", x0 + col.idx, yStart, { width: col.hora });
                 doc.text(tipoTxt, x0 + col.idx + col.hora, yStart, { width: col.tipo });
-
                 doc.text(montoTxt, x0 + col.idx + col.hora + col.tipo, yStart, { width: col.monto });
-
-                doc.text(metodoTxt, x0 + col.idx + col.hora + col.tipo + col.monto, yStart, {
-                    width: col.metodo,
-                });
-
+                doc.text(
+                    metodoTxt,
+                    x0 + col.idx + col.hora + col.tipo + col.monto,
+                    yStart,
+                    { width: col.metodo }
+                );
                 doc.text(
                     desc,
                     x0 + col.idx + col.hora + col.tipo + col.monto + col.metodo,
@@ -433,15 +522,13 @@ export const exportarHistorialCajaPDF = async (req, res) => {
             return;
         }
 
+        // rango por mes o fechas
         if (mes && /^\d{4}-\d{2}$/.test(mes)) {
             const inicio = moment.tz(`${mes}-01`, TZ).startOf("month").toDate();
             const fin = moment.tz(inicio, TZ).endOf("month").toDate();
             filtros.fecha = { $gte: inicio, $lte: fin };
         } else if (desde && hasta) {
-            filtros.fecha = {
-                $gte: inicioDelDia(desde),
-                $lte: finDelDia(hasta),
-            };
+            filtros.fecha = { $gte: inicioDelDia(desde), $lte: finDelDia(hasta) };
         }
 
         if (profesionalId) {
@@ -492,8 +579,6 @@ export const exportarHistorialCajaPDF = async (req, res) => {
         doc.end();
     } catch (error) {
         console.error("exportarHistorialCajaPDF:", error);
-        return res.status(500).json({
-            message: "Error al generar PDF del historial de cajas.",
-        });
+        return res.status(500).json({ message: "Error al generar PDF del historial de cajas." });
     }
 };

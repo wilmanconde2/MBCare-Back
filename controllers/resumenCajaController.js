@@ -17,7 +17,10 @@ export const generarResumen = async (req, res) => {
             return res.status(400).json({ message: "La fecha es obligatoria." });
         }
 
-        const inicioDia = inicioDelDia(fecha);
+        // ✅ FIX: businessDate consistente con el modelo ResumenCaja (YYYY-MM-DD)
+        const businessDate = fecha;
+
+        const inicioDia = inicioDelDia(businessDate);
         const finDia = finDelDia(inicioDia);
 
         const caja = await CashRegister.findOne({
@@ -25,12 +28,18 @@ export const generarResumen = async (req, res) => {
             organizacion: req.user.organizacion,
         }).select("_id fecha saldoInicial saldoFinal abierta organizacion profesional");
 
+        // ✅ FIX: no devolver 404 en consulta válida (respuesta limpia para el front)
         if (!caja) {
-            return res.status(404).json({ message: "No se encontró caja para esa fecha." });
+            return res.status(200).json({
+                message: "No se encontró caja para esa fecha.",
+                resumen: null,
+                caja: null,
+            });
         }
 
+        // ✅ FIX: buscar por (organizacion + businessDate) como define el modelo
         let resumenExistente = await ResumenCaja.findOne({
-            fecha: inicioDia,
+            businessDate,
             organizacion: req.user.organizacion,
         });
 
@@ -59,8 +68,11 @@ export const generarResumen = async (req, res) => {
 
         const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
 
+        // ✅ FIX: incluir businessDate y timezone (requeridos/consistentes con el modelo)
         const resumen = await ResumenCaja.create({
-            fecha: inicioDia,
+            businessDate,
+            timezone: "America/Bogota",
+            fecha: inicioDia, // compat con tu lógica actual (inicio del día)
             organizacion: req.user.organizacion,
             ingresosTotales,
             egresosTotales,
@@ -96,7 +108,10 @@ export const consultarResumen = async (req, res) => {
             return res.status(400).json({ message: "La fecha es obligatoria." });
         }
 
-        const inicioDia = inicioDelDia(fecha);
+        // ✅ FIX: businessDate consistente con el modelo ResumenCaja (YYYY-MM-DD)
+        const businessDate = fecha;
+
+        const inicioDia = inicioDelDia(businessDate);
         const finDia = finDelDia(inicioDia);
 
         const caja = await CashRegister.findOne({
@@ -104,43 +119,29 @@ export const consultarResumen = async (req, res) => {
             organizacion: req.user.organizacion,
         }).select("_id fecha saldoInicial saldoFinal abierta organizacion profesional");
 
+        // ✅ FIX: no devolver 404 en consulta válida (así el front no “rompe” al cargar)
         if (!caja) {
-            return res.status(404).json({ message: "No se encontró caja para esa fecha." });
+            return res.status(200).json({
+                resumen: null,
+                caja: null,
+            });
         }
 
         const userId = req.user?._id || req.user?.id;
         await recalcularTodo(inicioDia, req.user.organizacion, userId);
 
+        // ✅ FIX: buscar por (organizacion + businessDate)
         let resumen = await ResumenCaja.findOne({
-            fecha: inicioDia,
+            businessDate,
             organizacion: req.user.organizacion,
         });
 
+        // ✅ FIX: si no hay resumen persistido, responder 200 con resumen null (y caja presente)
         if (!resumen) {
-            const transacciones = await Transaction.find({
-                createdAt: { $gte: inicioDia, $lte: finDia },
-                organizacion: req.user.organizacion,
+            return res.status(200).json({
+                resumen: null,
+                caja,
             });
-
-            const ingresosTotales = transacciones
-                .filter((t) => t.tipo === "Ingreso")
-                .reduce((sum, t) => sum + (Number(t.monto) || 0), 0);
-
-            const egresosTotales = transacciones
-                .filter((t) => t.tipo === "Egreso")
-                .reduce((sum, t) => sum + (Number(t.monto) || 0), 0);
-
-            const saldoInicial = Number(caja.saldoInicial) || 0;
-            const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
-
-            resumen = {
-                fecha: inicioDia,
-                organizacion: req.user.organizacion,
-                ingresosTotales,
-                egresosTotales,
-                saldoInicial,
-                saldoFinal,
-            };
         }
 
         return res.status(200).json({ resumen, caja });
