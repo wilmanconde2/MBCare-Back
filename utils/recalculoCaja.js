@@ -3,24 +3,58 @@ import ConsolidadoMensual from "../models/ConsolidadoMensual.js";
 import Transaction from "../models/Transaction.js";
 import CashRegister from "../models/CashRegister.js";
 import moment from "moment-timezone";
-import { inicioDelDia, finDelDia } from "../config/timezone.js";
+import { inicioDelDia, finDelDia, ZONA_HORARIA } from "../config/timezone.js";
 
-const TZ = "America/Bogota";
+const TZ = ZONA_HORARIA || "America/Bogota";
 
 const normalizarFecha = (fecha) => inicioDelDia(fecha);
+
+/**
+ * Calcula businessDate (YYYY-MM-DD) en TZ a partir de una fecha Date.
+ */
+const toBusinessDate = (fechaDate) => {
+    return moment(fechaDate).tz(TZ).format("YYYY-MM-DD");
+};
+
+/**
+ * Intenta encontrar caja del día:
+ * 1) por businessDate (nuevo)
+ * 2) fallback por rango de fecha (legacy)
+ */
+const findCajaDelDia = async ({ fechaInicio, fechaFin, organizacionId, businessDate }) => {
+    let caja = await CashRegister.findOne({
+        organizacion: organizacionId,
+        businessDate,
+    }).sort({ createdAt: -1 });
+
+    if (!caja) {
+        caja = await CashRegister.findOne({
+            fecha: { $gte: fechaInicio, $lte: fechaFin },
+            organizacion: organizacionId,
+        }).sort({ createdAt: -1 });
+    }
+
+    return caja;
+};
 
 export const recalcularResumenDiario = async (fecha, organizacionId) => {
     try {
         const fechaInicio = normalizarFecha(fecha);
         const fechaFin = finDelDia(fechaInicio);
 
-        const caja = await CashRegister.findOne({
-            fecha: { $gte: fechaInicio, $lte: fechaFin },
-            organizacion: organizacionId,
+        const businessDate = toBusinessDate(fechaInicio);
+
+        // 1) Caja del día (soporta legacy)
+        const caja = await findCajaDelDia({
+            fechaInicio,
+            fechaFin,
+            organizacionId,
+            businessDate,
         });
 
         if (!caja) return null;
 
+        // 2) Transacciones del día (por rango)
         const transacciones = await Transaction.find({
             createdAt: { $gte: fechaInicio, $lte: fechaFin },
             organizacion: organizacionId,
@@ -37,30 +71,66 @@ export const recalcularResumenDiario = async (fecha, organizacionId) => {
         const saldoInicial = Number(caja.saldoInicial) || 0;
         const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
 
-        caja.saldoFinal = saldoFinal;
-        await caja.save();
+        // 3) ✅ Reparar caja legacy y persistir saldoFinal sin caer en validation por businessDate faltante
+        //    Usamos updateOne para evitar caja.save() sobre docs viejos.
+        await CashRegister.updateOne(
+            { _id: caja._id },
+            {
+                $set: {
+                    businessDate: caja.businessDate || businessDate,
+                    timezone: caja.timezone || TZ,
+                    // Mantener compat: fecha como inicio del día Bogotá (Date)
+                    fecha: caja.fecha || fechaInicio,
+                    saldoFinal,
+                },
+            }
+        );
 
+        // 4) ResumenCaja: prioridad por businessDate (índice unique), fallback por fecha (legacy)
         let resumen = await ResumenCaja.findOne({
-            fecha: fechaInicio,
             organizacion: organizacionId,
+            businessDate,
         });
 
+        if (!resumen) {
+            // fallback legacy por fecha (si existe de antes sin businessDate)
+            resumen = await ResumenCaja.findOne({
+                organizacion: organizacionId,
+                fecha: fechaInicio,
+            });
+        }
+
         if (resumen) {
+            // Si era legacy sin businessDate, lo rellenamos y luego guardamos
+            resumen.businessDate = resumen.businessDate || businessDate;
+            resumen.timezone = resumen.timezone || TZ;
+
             resumen.ingresosTotales = ingresosTotales;
             resumen.egresosTotales = egresosTotales;
             resumen.saldoInicial = saldoInicial;
             resumen.saldoFinal = saldoFinal;
+            resumen.fecha = resumen.fecha || fechaInicio;
+
             await resumen.save();
-        } else {
-            resumen = await ResumenCaja.create({
-                fecha: fechaInicio,
-                organizacion: organizacionId,
-                ingresosTotales,
-                egresosTotales,
-                saldoInicial,
-                saldoFinal,
-            });
+            return resumen;
         }
+
+        // 5) Crear (upsert seguro) por businessDate
+        resumen = await ResumenCaja.findOneAndUpdate(
+            { organizacion: organizacionId, businessDate },
+            {
+                $set: {
+                    businessDate,
+                    timezone: TZ,
+                    fecha: fechaInicio,
+                    ingresosTotales,
+                    egresosTotales,
+                    saldoInicial,
+                    saldoFinal,
+                },
+            },
+            { upsert: true, new: true }
+        );
 
         return resumen;
     } catch (err) {
@@ -83,17 +153,11 @@ export const recalcularConsolidadoMensual = async (fecha, organizacionId, userId
             organizacion: organizacionId,
         }).sort({ fecha: 1 });
 
-        const ingresosTotales = resumenes.reduce(
-            (a, r) => a + (Number(r.ingresosTotales) || 0),
-            0
-        );
+        const ingresosTotales = resumenes.reduce((a, r) => a + (Number(r.ingresosTotales) || 0), 0);
 
-        const egresosTotales = resumenes.reduce(
-            (a, r) => a + (Number(r.egresosTotales) || 0),
-            0
-        );
+        const egresosTotales = resumenes.reduce((a, r) => a + (Number(r.egresosTotales) || 0), 0);
 
-        const saldoInicial = resumenes.length > 0 ? (Number(resumenes[0].saldoInicial) || 0) : 0;
+        const saldoInicial = resumenes.length > 0 ? Number(resumenes[0].saldoInicial) || 0 : 0;
         const saldoFinal = saldoInicial + ingresosTotales - egresosTotales;
 
         let consolidado = await ConsolidadoMensual.findOne({
