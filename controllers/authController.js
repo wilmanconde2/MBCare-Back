@@ -158,7 +158,6 @@ export const changePassword = async (req, res) => {
 
 /* =====================================================
    👤 4️⃣ Obtener perfil del usuario autenticado
-   (Refactorizado → quitar logo)
 ===================================================== */
 export const getProfile = async (req, res) => {
   try {
