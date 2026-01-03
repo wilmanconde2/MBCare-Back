@@ -1,8 +1,12 @@
+// mbcare-backend/server.js
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import connectDB from "./config/db.js";
+
+// ✅ CRON JOB (cierre automático)
+import { iniciarCierreAutomaticoCajaJob } from "./jobs/cierreAutomaticoCaja.job.js";
 
 // Rutas principales
 import authRoutes from "./routes/authRoutes.js";
@@ -61,8 +65,8 @@ app.use("/api/adjuntos", attachmentRoutes);
 app.use("/api/configuracion", configuracionRoutes);
 
 // 💰 CONTABILIDAD (orden lógico)
-app.use("/api/caja", cajaRoutes);                 // abrir, cerrar, estado, resumen
-app.use("/api/flujo-caja", cashflowRoutes);       // transacciones, ingresos, egresos
+app.use("/api/caja", cajaRoutes); // abrir, cerrar, estado, resumen
+app.use("/api/flujo-caja", cashflowRoutes); // transacciones, ingresos, egresos
 app.use("/api/consolidado", consolidadoMensualRoutes);
 
 // 📊 Reportes y métricas
@@ -77,4 +81,8 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Servidor backend corriendo en http://localhost:${PORT}`);
+
+    // ✅ Iniciar CRON cuando el servidor ya está arriba
+    iniciarCierreAutomaticoCajaJob();
+    console.log("⏰ CRON de cierre automático de cajas activo.");
 });

@@ -1,8 +1,15 @@
+// mbcare-backend/controllers/cajaController.js
 import CashRegister from "../models/CashRegister.js";
 import Transaction from "../models/Transaction.js";
 import ResumenCaja from "../models/ResumenCaja.js";
 import ConsolidadoMensual from "../models/ConsolidadoMensual.js";
-import { inicioDelDia, finDelDia, fechaISO, ZONA_HORARIA, rangoUTCDesdeBusinessDate } from "../config/timezone.js";
+import {
+    inicioDelDia,
+    finDelDia,
+    fechaISO,
+    ZONA_HORARIA,
+    rangoUTCDesdeBusinessDate,
+} from "../config/timezone.js";
 import moment from "moment-timezone";
 import PDFDocument from "pdfkit";
 import { auditar } from "../utils/auditar.js";
@@ -14,6 +21,9 @@ import {
     obtenerTransaccionesDeCajaOFecha,
     obtenerResumenOficialODerivado,
 } from "../utils/cajaUtils.js";
+
+// ✅ AUTO-HEAL
+import { autoCerrarCajasVencidas } from "../services/cajaAutoHeal.service.js";
 
 /**
  * Helper: userId consistente
@@ -27,7 +37,21 @@ const getUserId = (req) => req.user?._id || req.user?.id;
 export const estadoCajaHoy = async (req, res) => {
     try {
         const organizacionId = req.user.organizacion;
-        const businessDate = fechaISO(); // YYYY-MM-DD en Bogotá :contentReference[oaicite:1]{index=1}
+        const actorUserId = getUserId(req);
+
+        // ✅ AUTO-HEAL: cerrar cajas vencidas antes de responder estado
+        try {
+            await autoCerrarCajasVencidas({
+                organizacionId,
+                actorUserId,
+                req, // para auditoría
+            });
+        } catch (e) {
+            console.error("AUTO-HEAL (estadoCajaHoy) falló:", e);
+            // no bloquea: devolvemos estado igual
+        }
+
+        const businessDate = fechaISO(); // YYYY-MM-DD en Bogotá
 
         // Prioridad: caja abierta del día
         let caja = await CashRegister.findOne({
@@ -63,6 +87,18 @@ export const abrirCaja = async (req, res) => {
         const organizacionId = req.user.organizacion;
         const profesionalId = getUserId(req);
 
+        // ✅ AUTO-HEAL: si quedó una caja abierta de días anteriores, ciérrala primero
+        try {
+            await autoCerrarCajasVencidas({
+                organizacionId,
+                actorUserId: profesionalId,
+                req, // para auditoría
+            });
+        } catch (e) {
+            console.error("AUTO-HEAL (abrirCaja) falló:", e);
+            // no bloquea: intentamos abrir igual
+        }
+
         const { saldoInicial } = req.body;
 
         const saldo = Number(saldoInicial);
@@ -70,7 +106,7 @@ export const abrirCaja = async (req, res) => {
             return res.status(400).json({ message: "Saldo inicial inválido." });
         }
 
-        const businessDate = fechaISO(); // Bogotá (YYYY-MM-DD) :contentReference[oaicite:2]{index=2}
+        const businessDate = fechaISO(); // Bogotá (YYYY-MM-DD)
 
         const existe = await CashRegister.findOne({
             organizacion: organizacionId,
@@ -113,6 +149,18 @@ export const cerrarCaja = async (req, res) => {
     try {
         const organizacionId = req.user.organizacion;
         const userId = getUserId(req);
+
+        // ✅ AUTO-HEAL: por si hay cajas vencidas abiertas (se cierran antes del cierre manual de hoy)
+        try {
+            await autoCerrarCajasVencidas({
+                organizacionId,
+                actorUserId: userId,
+                req, // para auditoría
+            });
+        } catch (e) {
+            console.error("AUTO-HEAL (cerrarCaja) falló:", e);
+            // no bloquea: seguimos intentando cerrar la caja de hoy
+        }
 
         const businessDate = fechaISO(); // Bogotá
         const caja = await CashRegister.findOne({
@@ -165,7 +213,7 @@ export const cerrarCaja = async (req, res) => {
         const TZ = "America/Bogota";
         const m = moment.tz(businessDate, "YYYY-MM-DD", TZ);
 
-        const mes = m.month() + 1;       // 1..12
+        const mes = m.month() + 1; // 1..12
         const anio = m.year();
 
         const fechaInicioMes = m.clone().startOf("month").toDate();
