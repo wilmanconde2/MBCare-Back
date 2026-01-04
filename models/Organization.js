@@ -1,3 +1,5 @@
+// mbcare-backend/models/Organization.js
+
 import mongoose from "mongoose";
 
 const organizationSchema = new mongoose.Schema(

@@ -1,3 +1,5 @@
+// mbcare-backend/controllers/configuracionController.js
+
 import Organization from "../models/Organization.js";
 
 /**

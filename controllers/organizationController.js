@@ -1,3 +1,5 @@
+//mbcare-backend/controllers/organizationController.js
+
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 

@@ -1,3 +1,5 @@
+// mbcare-backend/routes/configuracionRoutes.js
+
 import express from "express";
 import { obtenerConfiguracion, actualizarConfiguracion } from "../controllers/configuracionController.js";
 import { protect } from "../middlewares/authMiddleware.js";
