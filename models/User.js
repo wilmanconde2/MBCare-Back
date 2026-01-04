@@ -1,3 +1,5 @@
+// /mbcare-backend/models/User.js
+
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
@@ -24,7 +26,7 @@ const userSchema = new mongoose.Schema(
 
     rol: {
       type: String,
-      enum: ["Fundador", "Profesional", "Asistente", "Lector"],
+      enum: ["Fundador", "Profesional", "Asistente"],
       default: "Profesional",
     },
 

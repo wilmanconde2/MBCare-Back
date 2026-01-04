@@ -1,3 +1,5 @@
+// /mbcare-backend/controllers/authController.js
+
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
@@ -54,7 +56,8 @@ export const registerFundador = async (req, res) => {
         nombre: user.nombre,
         email: user.email,
         rol: user.rol,
-        organizacion: organizacion.nombre
+        organizacion: organizacion.nombre,
+        debeCambiarPassword: user.debeCambiarPassword
       }
     });
   } catch (error) {
@@ -65,6 +68,7 @@ export const registerFundador = async (req, res) => {
 
 /* =====================================================
    🔐 2️⃣ Login de usuario
+   ✅ Se incluye debeCambiarPassword para gate en frontend
 ===================================================== */
 export const loginUser = async (req, res) => {
   try {
@@ -112,6 +116,7 @@ export const loginUser = async (req, res) => {
         nombre: user.nombre,
         email: user.email,
         rol: user.rol,
+        debeCambiarPassword: user.debeCambiarPassword,
         organizacion: {
           id: user.organizacion?._id,
           nombre: user.organizacion?.nombre,
@@ -126,9 +131,9 @@ export const loginUser = async (req, res) => {
   }
 };
 
-
 /* =====================================================
    🔑 3️⃣ Cambiar contraseña
+   Ya baja debeCambiarPassword=false
 ===================================================== */
 export const changePassword = async (req, res) => {
   try {
@@ -165,7 +170,7 @@ export const getProfile = async (req, res) => {
       .select("-password")
       .populate({
         path: "organizacion",
-        select: "nombre industria creadaPor" // ← logo ELIMINADO
+        select: "nombre industria creadaPor"
       });
 
     if (!user) {
@@ -185,6 +190,7 @@ export const getProfile = async (req, res) => {
 
 /* =====================================================
    ✅ 5️⃣ Verificar token (Frontend keep alive)
+   ✅ Se devuelve user con debeCambiarPassword
 ===================================================== */
 export const verifyTokenController = async (req, res) => {
   try {
@@ -192,7 +198,7 @@ export const verifyTokenController = async (req, res) => {
       .select("-password")
       .populate({
         path: "organizacion",
-        select: "nombre industria" 
+        select: "nombre industria"
       });
 
     if (!user) {
@@ -205,4 +211,3 @@ export const verifyTokenController = async (req, res) => {
     return res.status(500).json({ message: "Error del servidor" });
   }
 };
-

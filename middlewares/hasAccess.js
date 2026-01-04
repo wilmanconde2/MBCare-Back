@@ -1,9 +1,11 @@
+// /mbcare-backend/middlewares/hasAccess.js
+
 const permissionsMatrix = {
     pacientes: {
         listar: ["Fundador", "Profesional", "Asistente"],
         crear: ["Fundador", "Profesional", "Asistente"],
         editar: ["Fundador", "Profesional", "Asistente"],
-        eliminar: ["Fundador"], 
+        eliminar: ["Fundador"],
     },
 
     citas: {
@@ -14,23 +16,23 @@ const permissionsMatrix = {
     },
 
     notas: {
-        ver: ["Fundador", "Profesional", "Asistente"],           
-        crear: ["Fundador", "Profesional", "Asistente"],        
-        editar: ["Fundador", "Profesional", "Asistente"],       
-        eliminar: ["Fundador", "Profesional"],                  
+        ver: ["Fundador", "Profesional", "Asistente"],
+        crear: ["Fundador", "Profesional", "Asistente"],
+        editar: ["Fundador", "Profesional", "Asistente"],
+        eliminar: ["Fundador", "Profesional"],
     },
 
     adjuntos: {
-        subir: ["Fundador", "Profesional"],                    
+        subir: ["Fundador", "Profesional"],
         ver: ["Fundador", "Profesional", "Asistente"],
-        eliminar: ["Fundador", "Profesional"],                 
+        eliminar: ["Fundador", "Profesional"],
     },
 
     transacciones: {
-        crear: ["Fundador", "Asistente"],                       
-        editar: ["Fundador"],                                   
-        eliminar: ["Fundador"],                                 
-        ver: ["Fundador", "Asistente"],                         
+        crear: ["Fundador", "Asistente"],
+        editar: ["Fundador"],
+        eliminar: ["Fundador"],
+        ver: ["Fundador", "Asistente"],
     },
 
     caja: {
@@ -47,10 +49,13 @@ const permissionsMatrix = {
 
     reportes: {
         ver: ["Fundador", "Profesional"],
-        exportar: ["Fundador", "Profesional"],                  
+        exportar: ["Fundador", "Profesional"],
+    },
+
+    usuarios: {
+        cambiarRol: ["Fundador"],
     },
 };
-
 
 /**
  * Middleware que permite acceso por:
@@ -67,9 +72,7 @@ export const hasAccess = (moduloOrRol, accion = null) => {
 
         // 🔒 Control global por rol directo
         if (!accion) {
-            const rolesPermitidos = Array.isArray(moduloOrRol)
-                ? moduloOrRol
-                : [moduloOrRol];
+            const rolesPermitidos = Array.isArray(moduloOrRol) ? moduloOrRol : [moduloOrRol];
 
             if (!rolesPermitidos.includes(rol)) {
                 return res.status(403).json({ message: "Acceso denegado (rol)." });
