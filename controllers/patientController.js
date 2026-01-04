@@ -1,4 +1,59 @@
+// mbcare-backend/controllers/patientController.js
+
 import Patient from "../models/Patient.js";
+
+const PICK_FIELDS = [
+    "nombreCompleto",
+    "tipoDocumento",
+    "numeroDocumento",
+    "fechaNacimiento",
+    "genero",
+    "telefono",
+    "email",
+    "direccion",
+    "ocupacion",
+    "estadoCivil",
+    "pesoKg",
+    "alturaCm",
+    "alergias",
+    "lesiones",
+    "operaciones",
+    "razonVisita",
+    "valoracion",
+    "observaciones",
+];
+
+function pick(body) {
+    const out = {};
+    for (const key of PICK_FIELDS) {
+        if (body[key] !== undefined) out[key] = body[key];
+    }
+    return out;
+}
+
+function normalizePatientInput(body) {
+    const out = pick(body);
+
+    // Normalizar números (acepta "98", "98.5", "" -> undefined)
+    for (const k of ["pesoKg", "alturaCm"]) {
+        if (out[k] === "" || out[k] === null) {
+            delete out[k];
+            continue;
+        }
+        if (out[k] !== undefined) {
+            const n = Number(out[k]);
+            if (Number.isNaN(n)) delete out[k];
+            else out[k] = n;
+        }
+    }
+
+    // Normalizar strings vacíos a undefined (evita guardar "")
+    for (const k of ["alergias", "lesiones", "operaciones", "razonVisita", "valoracion", "ocupacion", "observaciones", "direccion", "ciudad", "pais", "telefono", "email"]) {
+        if (out[k] === "") delete out[k];
+    }
+
+    return out;
+}
 
 /**
  * 🔸 Crear nuevo paciente
@@ -23,12 +78,13 @@ export const crearPaciente = async (req, res) => {
                 return res.status(400).json({ message: "Este documento ya está registrado" });
             }
         }
-
         const nuevoPaciente = new Patient({
-            ...req.body,
+            ...normalizePatientInput(req.body),
             creadoPor: req.user.id,
             organizacion: req.user.organizacion,
         });
+
+
 
         await nuevoPaciente.save();
 
@@ -83,12 +139,9 @@ export const obtenerPacientePorId = async (req, res) => {
 export const actualizarPaciente = async (req, res) => {
     try {
         const paciente = await Patient.findOneAndUpdate(
-            {
-                _id: req.params.id,
-                organizacion: req.user.organizacion,
-            },
-            req.body,
-            { new: true }
+            { _id: req.params.id, organizacion: req.user.organizacion },
+            normalizePatientInput(req.body),
+            { new: true, runValidators: true }
         );
 
         if (!paciente) {

@@ -1,3 +1,5 @@
+// mbcare-backend/routes/auditoriaRoutes.js
+
 import express from "express";
 import { protect } from "../middlewares/authMiddleware.js";
 import { hasAccess } from "../middlewares/hasAccess.js";

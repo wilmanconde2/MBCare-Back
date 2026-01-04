@@ -1,3 +1,5 @@
+// mbcare-backend/models/Patient.js
+
 import mongoose from "mongoose";
 
 const patientSchema = new mongoose.Schema(
@@ -47,18 +49,6 @@ const patientSchema = new mongoose.Schema(
             trim: true,
         },
 
-        ciudad: {
-            type: String,
-            trim: true,
-        },
-
-        pais: {
-            type: String,
-            trim: true,
-            default: "Colombia",
-        },
-
-        // Información adicional
         ocupacion: {
             type: String,
             trim: true,
@@ -70,10 +60,54 @@ const patientSchema = new mongoose.Schema(
                 "Soltero",
                 "Casado",
                 "Unión libre",
+                "Separado",
                 "Divorciado",
                 "Viudo",
                 "Otro",
             ],
+        },
+        
+        // Salud / Historia clínica básica
+        pesoKg: {
+            type: Number,
+            min: [0, "El peso no puede ser negativo."],
+            max: [250, "El peso es demasiado alto."],
+        },
+
+        alturaCm: {
+            type: Number,
+            min: [0, "La altura no puede ser negativa."],
+            max: [250, "La altura es demasiado alta."],
+        },
+
+        alergias: {
+            type: String,
+            trim: true,
+            maxlength: 1000,
+        },
+
+        lesiones: {
+            type: String,
+            trim: true,
+            maxlength: 1000,
+        },
+
+        operaciones: {
+            type: String,
+            trim: true,
+            maxlength: 1000,
+        },
+
+        razonVisita: {
+            type: String,
+            trim: true,
+            maxlength: 1000,
+        },
+
+        valoracion: {
+            type: String,
+            trim: true,
+            maxlength: 2000,
         },
 
         observaciones: {

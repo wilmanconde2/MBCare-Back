@@ -1,3 +1,5 @@
+// mbcare-backend/routes/patientRoutes.js
+
 import express from "express";
 import {
     crearPaciente,
