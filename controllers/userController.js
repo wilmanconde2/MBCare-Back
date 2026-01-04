@@ -6,13 +6,11 @@ import mongoose from "mongoose";
 
 /* ============================================================================
    🟢 Crear usuario secundario (solo Fundador)
-   Roles permitidos de creación: Profesional / Asistente
 ============================================================================ */
 export const crearUsuarioSecundario = async (req, res) => {
     try {
         const { nombre, email, password, rol } = req.body;
 
-        // 🔒 Seguridad: bloquear por rol (solo Fundador)
         if (req.user.rol !== "Fundador") {
             return res.status(403).json({ message: "Solo el Fundador puede crear usuarios." });
         }
@@ -67,14 +65,12 @@ export const crearUsuarioSecundario = async (req, res) => {
 };
 
 /* ============================================================================
-   🔄 Activar / Desactivar usuario
-   Solo Fundador puede activar o desactivar
+   🔄 Activar / Desactivar usuario (Solo Fundador)
 ============================================================================ */
 export const toggleUsuarioActivo = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // 🔒 Seguridad: solo Fundador
         if (req.user.rol !== "Fundador") {
             return res.status(403).json({
                 message: "Solo el Fundador puede activar o desactivar usuarios.",
@@ -90,7 +86,6 @@ export const toggleUsuarioActivo = async (req, res) => {
             return res.status(404).json({ message: "Usuario no encontrado." });
         }
 
-        // 🚫 No se puede desactivar al Fundador
         if (usuario.rol === "Fundador") {
             return res.status(403).json({ message: "No se puede desactivar al Fundador." });
         }
@@ -112,17 +107,13 @@ export const toggleUsuarioActivo = async (req, res) => {
 };
 
 /* ============================================================================
-   🛡️ Cambiar rol de usuario
-   Solo Fundador
-   - No se puede cambiar el rol del Fundador
-   - Roles destino: Profesional | Asistente
+   🛡️ Cambiar rol de usuario (Solo Fundador)
 ============================================================================ */
 export const cambiarRolUsuario = async (req, res) => {
     try {
         const { id } = req.params;
         const { rol } = req.body;
 
-        // Solo Fundador
         if (req.user.rol !== "Fundador") {
             return res.status(403).json({ message: "No tienes permisos para cambiar roles." });
         }
@@ -141,12 +132,10 @@ export const cambiarRolUsuario = async (req, res) => {
             return res.status(404).json({ message: "Usuario no encontrado." });
         }
 
-        // Misma organización
         if (String(usuario.organizacion) !== String(req.user.organizacion)) {
             return res.status(403).json({ message: "No puedes modificar usuarios de otra organización." });
         }
 
-        // No tocar al Fundador
         if (usuario.rol === "Fundador") {
             return res.status(403).json({ message: "No se puede modificar el rol del Fundador." });
         }
@@ -175,8 +164,6 @@ export const cambiarRolUsuario = async (req, res) => {
 
 /* ============================================================================
    📋 Listar usuarios de la organización
-   Fundador → ve todos
-   Profesional/Asistente → solo activos
 ============================================================================ */
 export const listarUsuarios = async (req, res) => {
     try {
@@ -185,12 +172,10 @@ export const listarUsuarios = async (req, res) => {
 
         const filtro = { organizacion };
 
-        // 🔹 No Fundador → solo usuarios activos
         if (rolSolicitante !== "Fundador") {
             filtro.activo = true;
         }
 
-        // Filtro opcional por rol
         if (rol) {
             filtro.rol = rol;
         }
@@ -204,5 +189,44 @@ export const listarUsuarios = async (req, res) => {
             message: "Error al obtener usuarios.",
             error: error.message,
         });
+    }
+};
+
+/* ============================================================================
+   ✅ NUEVO: actualizar nombre completo del usuario autenticado
+   PATCH /api/usuarios/me/nombre
+   Fundador / Profesional / Asistente
+============================================================================ */
+export const actualizarMiNombre = async (req, res) => {
+    try {
+        const { nombre } = req.body;
+
+        if (!nombre || !nombre.trim()) {
+            return res.status(400).json({ message: "El nombre completo es obligatorio." });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { nombre: nombre.trim() },
+            { new: true, runValidators: true }
+        ).select("-password");
+
+        if (!user) {
+            return res.status(404).json({ message: "Usuario no encontrado." });
+        }
+
+        return res.status(200).json({
+            message: "Nombre actualizado correctamente.",
+            user: {
+                id: user._id,
+                nombre: user.nombre,
+                email: user.email,
+                rol: user.rol,
+                organizacion: user.organizacion,
+            },
+        });
+    } catch (error) {
+        console.error("Error en actualizarMiNombre:", error);
+        return res.status(500).json({ message: "Error al actualizar el nombre." });
     }
 };

@@ -4,63 +4,78 @@ import Organization from "../models/Organization.js";
 
 /**
  * GET /api/configuracion
- * Solo Fundador o Asistente
+ * Fundador / Profesional / Asistente pueden VER:
+ * - nombre de la organización
+ * - industria
  */
 export const obtenerConfiguracion = async (req, res) => {
     try {
-        if (req.user.rol === "Profesional") {
-            return res.status(403).json({ message: "No tienes permisos para ver configuración." });
-        }
-
-        const organizacion = await Organization.findById(req.user.organizacion);
+        const organizacion = await Organization.findById(req.user.organizacion).select(
+            "nombre industria"
+        );
 
         if (!organizacion) {
             return res.status(404).json({ message: "Organización no encontrada." });
         }
 
-        res.status(200).json({
-            nombre: organizacion.nombre,
-            industria: organizacion.industria,
-            tema: organizacion.tema || "claro"
-            // logo eliminado
+        return res.status(200).json({
+            organizacion: {
+                id: organizacion._id,
+                nombre: organizacion.nombre,
+                industria: organizacion.industria,
+            },
         });
     } catch (error) {
-        res.status(500).json({ message: "Error al obtener datos de configuración." });
+        console.error("Error en obtenerConfiguracion:", error);
+        return res
+            .status(500)
+            .json({ message: "Error al obtener datos de configuración." });
     }
 };
 
 /**
- * PUT /api/configuracion
- * Solo Fundador
+ * PATCH /api/configuracion/organizacion/nombre
+ * Solo Fundador puede EDITAR:
+ * - nombre de la organización
+ * Industria SOLO lectura (nadie la cambia aquí)
  */
-export const actualizarConfiguracion = async (req, res) => {
+export const actualizarNombreOrganizacion = async (req, res) => {
     try {
         if (req.user.rol !== "Fundador") {
-            return res.status(403).json({ message: "No tienes permisos para actualizar configuración." });
+            return res
+                .status(403)
+                .json({ message: "No tienes permisos para actualizar la organización." });
         }
 
-        const { nombre, industria, tema } = req.body;
+        const { nombreOrganizacion } = req.body;
+
+        if (!nombreOrganizacion || !nombreOrganizacion.trim()) {
+            return res
+                .status(400)
+                .json({ message: "El nombre de la organización es obligatorio." });
+        }
+
         const organizacion = await Organization.findById(req.user.organizacion);
 
         if (!organizacion) {
             return res.status(404).json({ message: "Organización no encontrada." });
         }
 
-        if (nombre) organizacion.nombre = nombre;
-        if (industria) organizacion.industria = industria;
-        if (tema) organizacion.tema = tema;
-
+        organizacion.nombre = nombreOrganizacion.trim();
         await organizacion.save();
 
-        res.status(200).json({
-            message: "Configuración actualizada exitosamente.",
+        return res.status(200).json({
+            message: "Nombre de organización actualizado exitosamente.",
             organizacion: {
+                id: organizacion._id,
                 nombre: organizacion.nombre,
                 industria: organizacion.industria,
-                tema: organizacion.tema
-            }
+            },
         });
     } catch (error) {
-        res.status(500).json({ message: "Error al actualizar configuración." });
+        console.error("Error en actualizarNombreOrganizacion:", error);
+        return res
+            .status(500)
+            .json({ message: "Error al actualizar el nombre de la organización." });
     }
 };

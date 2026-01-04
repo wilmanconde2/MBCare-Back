@@ -1,23 +1,28 @@
 // mbcare-backend/routes/configuracionRoutes.js
 
 import express from "express";
-import { obtenerConfiguracion, actualizarConfiguracion } from "../controllers/configuracionController.js";
+import {
+    obtenerConfiguracion,
+    actualizarNombreOrganizacion,
+} from "../controllers/configuracionController.js";
 import { protect } from "../middlewares/authMiddleware.js";
-import { upload } from "../middlewares/multer.js";
 import { hasAccess } from "../middlewares/hasAccess.js";
 
 const router = express.Router();
 
-// Fundador, Profesional o Asistente pueden ver configuración básica
+/**
+ * Ver configuración básica (todos los roles)
+ */
 router.get("/", protect, obtenerConfiguracion);
 
-// Solo Fundador puede actualizar configuración
-router.put(
-    "/",
+/**
+ * Actualizar SOLO nombre de organización (solo Fundador)
+ */
+router.patch(
+    "/organizacion/nombre",
     protect,
     hasAccess(["Fundador"]),
-    upload.single("logo"),
-    actualizarConfiguracion
+    actualizarNombreOrganizacion
 );
 
 export default router;

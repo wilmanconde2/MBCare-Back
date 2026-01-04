@@ -6,6 +6,7 @@ import {
     toggleUsuarioActivo,
     listarUsuarios,
     cambiarRolUsuario,
+    actualizarMiNombre,
 } from "../controllers/userController.js";
 
 import { protect } from "../middlewares/authMiddleware.js";
@@ -14,29 +15,34 @@ import { hasAccess } from "../middlewares/hasAccess.js";
 const router = express.Router();
 
 /**
- * 🟢 Crear usuario Profesional o Asistente
- * Solo el Fundador puede hacer esto
+ * 🟢 Crear usuario Profesional o Asistente (Solo Fundador)
  */
 router.post("/crear", protect, hasAccess("Fundador"), crearUsuarioSecundario);
 
 /**
- * 🔄 Activar o desactivar un usuario
- * Solo el Fundador puede hacer esto
+ * 🔄 Activar o desactivar un usuario (Solo Fundador)
  */
 router.put("/activar-desactivar/:id", protect, hasAccess("Fundador"), toggleUsuarioActivo);
 
 /**
- * 🧩 Cambiar rol de un usuario
- * Solo Fundador
- * No se puede modificar rol del Fundador
+ * 🧩 Cambiar rol de un usuario (Solo Fundador)
  */
 router.patch("/:id/rol", protect, hasAccess("Fundador"), cambiarRolUsuario);
 
 /**
- * 📋 Listar usuarios de la organización actual
- * Fundador puede ver todos
- * Profesional/Asistente también (según lógica del controller)
+ * 📋 Listar usuarios (todos los roles, con filtro interno)
  */
 router.get("/", protect, hasAccess(["Fundador", "Profesional", "Asistente"]), listarUsuarios);
+
+/**
+ * ✅ NUEVO: actualizar nombre del usuario autenticado (todos los roles)
+ * Perfil Personal: SOLO nombre completo
+ */
+router.patch(
+    "/me/nombre",
+    protect,
+    hasAccess(["Fundador", "Profesional", "Asistente"]),
+    actualizarMiNombre
+);
 
 export default router;

@@ -1,4 +1,5 @@
 // mbcare-backend/jobs/cierreAutomaticoCaja.job.js
+
 import cron from "node-cron";
 import mongoose from "mongoose";
 
