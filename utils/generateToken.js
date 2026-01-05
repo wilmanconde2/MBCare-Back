@@ -1,3 +1,5 @@
+// mbcare-backend/utils/generateToken.js
+
 import jwt from "jsonwebtoken";
 
 /**
@@ -6,8 +8,10 @@ import jwt from "jsonwebtoken";
  * @returns {String} token JWT firmado
  */
 const generateToken = (payload) => {
+    const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "7h";
+
     return jwt.sign(payload, process.env.JWT_SECRET, {
-        expiresIn: "7d",
+        expiresIn: jwtExpiresIn,
     });
 };
 

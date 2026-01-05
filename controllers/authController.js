@@ -1,4 +1,4 @@
-// /mbcare-backend/controllers/authController.js
+// mbcare-backend/controllers/authController.js
 
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -19,7 +19,7 @@ export const registerFundador = async (req, res) => {
     const fundadorExiste = await User.findOne({ rol: "Fundador" });
     if (fundadorExiste) {
       return res.status(403).json({
-        message: "Ya existe un Fundador registrado. Registro bloqueado."
+        message: "Ya existe un Fundador registrado. Registro bloqueado.",
       });
     }
 
@@ -33,7 +33,7 @@ export const registerFundador = async (req, res) => {
 
     const organizacion = await Organization.create({
       nombre: nombreOrganizacion,
-      industria
+      industria,
     });
 
     const user = await User.create({
@@ -43,7 +43,7 @@ export const registerFundador = async (req, res) => {
       rol: "Fundador",
       organizacion: organizacion._id,
       activo: true,
-      debeCambiarPassword: false
+      debeCambiarPassword: false,
     });
 
     organizacion.creadaPor = user._id;
@@ -57,8 +57,8 @@ export const registerFundador = async (req, res) => {
         email: user.email,
         rol: user.rol,
         organizacion: organizacion.nombre,
-        debeCambiarPassword: user.debeCambiarPassword
-      }
+        debeCambiarPassword: user.debeCambiarPassword,
+      },
     });
   } catch (error) {
     console.error("Error en registerFundador:", error);
@@ -79,7 +79,7 @@ export const loginUser = async (req, res) => {
 
     let user = await User.findOne({ email, activo: true }).populate({
       path: "organizacion",
-      select: "nombre industria"
+      select: "nombre industria",
     });
 
     if (!user) {
@@ -91,6 +91,8 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Credenciales inválidas." });
     }
 
+    const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "7h";
+
     const token = jwt.sign(
       {
         id: user._id,
@@ -99,13 +101,14 @@ export const loginUser = async (req, res) => {
         organizacion: user.organizacion?._id,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: jwtExpiresIn }
     );
 
+    // Nota: en prod probablemente quieras secure=true y sameSite="none" si front y back están en dominios distintos.
     res.cookie("token", token, {
       httpOnly: true,
-      secure: false,
-      sameSite: "lax"
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     });
 
     return res.status(200).json({
@@ -120,10 +123,9 @@ export const loginUser = async (req, res) => {
           id: user.organizacion?._id,
           nombre: user.organizacion?.nombre,
           industria: user.organizacion?.industria,
-        }
-      }
+        },
+      },
     });
-
   } catch (error) {
     console.error("Error en loginUser:", error);
     return res.status(500).json({ message: "Error del servidor." });
@@ -190,7 +192,7 @@ export const getProfile = async (req, res) => {
       .select("-password")
       .populate({
         path: "organizacion",
-        select: "nombre industria creadaPor"
+        select: "nombre industria creadaPor",
       });
 
     if (!user) {
@@ -217,7 +219,7 @@ export const verifyTokenController = async (req, res) => {
       .select("-password")
       .populate({
         path: "organizacion",
-        select: "nombre industria"
+        select: "nombre industria",
       });
 
     if (!user) {

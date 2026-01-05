@@ -6,10 +6,10 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import connectDB from "./config/db.js";
 
-// ✅ CRON JOB (cierre automático)
+// ✅ CRON JOB
 import { iniciarCierreAutomaticoCajaJob } from "./jobs/cierreAutomaticoCaja.job.js";
 
-// Rutas principales
+// Rutas
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import patientRoutes from "./routes/patientRoutes.js";
@@ -19,7 +19,6 @@ import noteRoutes from "./routes/noteRoutes.js";
 import attachmentRoutes from "./routes/attachmentRoutes.js";
 import configuracionRoutes from "./routes/configuracionRoutes.js";
 
-// Contabilidad
 import cajaRoutes from "./routes/cajaRoutes.js";
 import cashflowRoutes from "./routes/cashflowRoutes.js";
 import consolidadoMensualRoutes from "./routes/consolidadoMensualRoutes.js";
@@ -32,17 +31,37 @@ import { errorHandler } from "./middlewares/errorHandler.js";
 dotenv.config();
 const app = express();
 
+// =========================
 // 🔌 DB
+// =========================
 connectDB();
 
+// =========================
 // 🌍 Middlewares globales
+// =========================
 app.use(express.json());
 app.use(cookieParser());
 
-// 🌐 CORS (React)
+// =========================
+// 🌐 CORS dinámico por ENV
+// =========================
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
+    .split(",")
+    .map(o => o.trim())
+    .filter(Boolean);
+
 app.use(
     cors({
-        origin: "http://localhost:5173",
+        origin: function (origin, cb) {
+            // Permite Postman, cron, curl
+            if (!origin) return cb(null, true);
+
+            if (allowedOrigins.includes(origin)) {
+                return cb(null, true);
+            }
+
+            return cb(new Error(`CORS bloqueado para: ${origin}`), false);
+        },
         credentials: true,
         methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
         allowedHeaders: ["Content-Type", "Authorization"],
@@ -52,12 +71,9 @@ app.use(
 // =========================
 // 🚀 RUTAS API
 // =========================
-
-// Auth y usuarios
 app.use("/api/auth", authRoutes);
 app.use("/api/usuarios", userRoutes);
 
-// Core
 app.use("/api/pacientes", patientRoutes);
 app.use("/api/organizacion", organizationRoutes);
 app.use("/api/citas", appointmentRoutes);
@@ -65,25 +81,33 @@ app.use("/api/notas", noteRoutes);
 app.use("/api/adjuntos", attachmentRoutes);
 app.use("/api/configuracion", configuracionRoutes);
 
-// 💰 CONTABILIDAD (orden lógico)
-app.use("/api/caja", cajaRoutes); // abrir, cerrar, estado, resumen
-app.use("/api/flujo-caja", cashflowRoutes); // transacciones, ingresos, egresos
+app.use("/api/caja", cajaRoutes);
+app.use("/api/flujo-caja", cashflowRoutes);
 app.use("/api/consolidado", consolidadoMensualRoutes);
 
-// 📊 Reportes y métricas
 app.use("/api/reportes", reportesRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/auditoria", auditoriaRoutes);
 
-// 🧨 Errores (SIEMPRE al final)
+// =========================
+// 🧨 Errores
+// =========================
 app.use(errorHandler);
 
+// =========================
 // 🚪 Puerto
+// =========================
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor backend corriendo en http://localhost:${PORT}`);
 
-    // ✅ Iniciar CRON cuando el servidor ya está arriba
-    iniciarCierreAutomaticoCajaJob();
-    console.log("⏰ CRON de cierre automático de cajas activo.");
+app.listen(PORT, () => {
+    console.log(`🚀 Backend corriendo en puerto ${PORT}`);
+
+    const enableCron = process.env.ENABLE_CRON === "true";
+
+    if (enableCron) {
+        iniciarCierreAutomaticoCajaJob();
+        console.log("⏰ CRON de cierre automático ACTIVADO");
+    } else {
+        console.log("⏸️ CRON DESACTIVADO (ENABLE_CRON != true)");
+    }
 });
